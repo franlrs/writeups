@@ -118,6 +118,5 @@ All writeups are also published on my personal site with a better reading experi
 ---
 
 <div align="center">
-  <br/>
   <sub>📄 <a href="LICENSE">MIT License</a> · Star if useful!</sub>
 </div>
