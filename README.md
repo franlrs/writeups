@@ -2,24 +2,18 @@
 
 <img src="https://raw.githubusercontent.com/dbx0/kali-railway/refs/heads/main/assets/kali-linux-logo-wikimedia.png" alt="Kali Linux" width="200"/>
 
-<br/><br/>
 
-<img src="https://img.shields.io/badge/Kali_Linux-557C94?style=for-the-badge&logo=kalilinux&logoColor=white"/>
-<img src="https://img.shields.io/badge/Ethical_Hacking-111111?style=for-the-badge&logo=hackthebox&logoColor=9fef00"/>
-<img src="https://img.shields.io/badge/CTF_Writeups-e11d48?style=for-the-badge&logo=bookstack&logoColor=white"/>
 
 
 <h3>🔐 Penetration Testing & CTF Writeup Collection</h3>
 <p><em>From reconnaissance to root — documented step by step.</em></p>
 
 <br/>
+<img src="https://img.shields.io/badge/Kali_Linux-557C94?style=for-the-badge&logo=kalilinux&logoColor=white"/>
+<img src="https://img.shields.io/badge/Ethical_Hacking-111111?style=for-the-badge&logo=hackthebox&logoColor=9fef00"/>
+<img src="https://img.shields.io/badge/CTF_Writeups-e11d48?style=for-the-badge&logo=bookstack&logoColor=white"/>
 
-<a href="https://portfolio.franlrs.blog/writeups"><img src="https://img.shields.io/badge/🌐_Portfolio_%26_Writeups-franlrs.blog-blueviolet?style=for-the-badge"/></a>
-&nbsp;
-<img src="https://img.shields.io/badge/Machines_Pwned-15-brightgreen?style=for-the-badge"/>
-&nbsp;
-<img src="https://img.shields.io/badge/Platforms-3-3b82f6?style=for-the-badge&logo=linux&logoColor=white"/>
-</div>
+
 
 ---
 
