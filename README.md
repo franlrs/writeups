@@ -4,24 +4,21 @@
 
 <br/><br/>
 
-<img src="https://img.shields.io/badge/Kali_Linux-557C94?style=for-the-badge&logo=kalilinux&logoColor=white" alt="Kali Linux"/>
-<img src="https://img.shields.io/badge/Ethical_Hacking-black?style=for-the-badge&logo=hackthebox&logoColor=9fef00" alt="Ethical Hacking"/>
-<img src="https://img.shields.io/badge/CTF_Writeups-critical?style=for-the-badge&logo=bookstack&logoColor=white" alt="CTF Writeups"/>
+<img src="https://img.shields.io/badge/Kali_Linux-557C94?style=for-the-badge&logo=kalilinux&logoColor=white"/>
+<img src="https://img.shields.io/badge/Ethical_Hacking-111111?style=for-the-badge&logo=hackthebox&logoColor=9fef00"/>
+<img src="https://img.shields.io/badge/CTF_Writeups-e11d48?style=for-the-badge&logo=bookstack&logoColor=white"/>
 
-<br/><br/>
 
-### 🔐 Penetration Testing & CTF Writeup Collection
-
-*From reconnaissance to root — documented step by step.*
+<h3>🔐 Penetration Testing & CTF Writeup Collection</h3>
+<p><em>From reconnaissance to root — documented step by step.</em></p>
 
 <br/>
 
-[![Portfolio](https://img.shields.io/badge/🌐_Portfolio_&_Writeups-franlrs.blog-blueviolet?style=for-the-badge)](https://portfolio.franlrs.blog/writeups)
+<a href="https://portfolio.franlrs.blog/writeups"><img src="https://img.shields.io/badge/🌐_Portfolio_%26_Writeups-franlrs.blog-blueviolet?style=for-the-badge"/></a>
 &nbsp;
-[![Machines Pwned](https://img.shields.io/badge/Machines_Pwned-15-brightgreen?style=for-the-badge&logo=target&logoColor=white)](#)
+<img src="https://img.shields.io/badge/Machines_Pwned-15-brightgreen?style=for-the-badge"/>
 &nbsp;
-[![Platforms](https://img.shields.io/badge/Platforms-3-blue?style=for-the-badge&logo=linux&logoColor=white)](#)
-
+<img src="https://img.shields.io/badge/Platforms-3-3b82f6?style=for-the-badge&logo=linux&logoColor=white"/>
 </div>
 
 ---
