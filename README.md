@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/dbx0/kali-railway/refs/heads/main/assets/kali-linux-logo-wikimedia.png" alt="Kali Linux" width="340"/>
+<img src="https://raw.githubusercontent.com/dbx0/kali-railway/refs/heads/main/assets/kali-linux-logo-wikimedia.png" alt="Kali Linux" width="200"/>
 
 <br/><br/>
 
